@@ -1,8 +1,8 @@
-// pages/VendorProfile.jsx - Standalone version without AuthLayout
+// pages/VendorProfile.jsx - COMPLETE FIXED VERSION
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import FormInput from '../components/FormInput';
-import { vendorApi } from '../hooks/vendorApi';
+import FormInput from '../../components/FormInput';
+import { vendorApi } from '../../hooks/vendorApi';
 import {
   FaUser,
   FaEnvelope,
@@ -23,7 +23,8 @@ import {
   FaTimes,
   FaEdit,
   FaLock,
-  FaUserCircle
+  FaUserCircle,
+  FaExclamationTriangle
 } from 'react-icons/fa';
 
 const VendorProfile = () => {
@@ -37,6 +38,7 @@ const VendorProfile = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [vendorData, setVendorData] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -50,7 +52,10 @@ const VendorProfile = () => {
     vendorShopClosingTime: '',
     vendorShopNumberOfFloors: '',
     vendorShopNumberOfStalls: '',
-    vendorLicenseNumber: ''
+    vendorLicenseNumber: '',
+    profile: '',
+    role: '',
+    plan: ''
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -58,74 +63,114 @@ const VendorProfile = () => {
     newPassword: '',
     confirmPassword: ''
   });
+  
 
   useEffect(() => {
-    // Check authentication
-    if (!vendorApi.isAuthenticated()) {
-      navigate('/vendor/login');
-      return;
-    }
-
-    loadVendorProfile();
+    checkAuthAndLoadProfile();
   }, [navigate]);
 
-  const loadVendorProfile = async () => {
+  const checkAuthAndLoadProfile = async () => {
     try {
       setLoading(true);
       
-      let profile;
-      try {
-        profile = await vendorApi.getVendorAdminProfile();
-        console.log('Vendor admin profile loaded:', profile);
-      } catch (adminError) {
-        console.log('Admin profile failed, trying regular profile:', adminError);
-        profile = await vendorApi.getVendorProfile();
-        console.log('Vendor profile loaded:', profile);
+      // First check if authenticated
+      if (!vendorApi.isAuthenticated()) {
+        console.log('Not authenticated, redirecting to login');
+        navigate('/vendor/login');
+        return;
       }
+
+      // Try to load profile using unified method
+      await loadVendorProfile();
       
-      // Extract vendor data
+    } catch (error) {
+      console.error('Auth check failed:', error);
+      
+      // If we get a 401/403, clear auth and redirect
+      if (error.message?.includes('401') || 
+          error.message?.includes('403') || 
+          error.message?.includes('Unauthorized') ||
+          error.message?.includes('Access denied')) {
+        
+        console.log('Auth error, clearing data and redirecting');
+        vendorApi.clearAuthData();
+        navigate('/vendor/login');
+      } else {
+        setErrors({ general: error.message || 'Failed to load profile' });
+      }
+    } finally {
+      setLoading(false);
+      setAuthChecked(true);
+    }
+  };
+
+  const loadVendorProfile = async () => {
+    try {
+      console.log('Loading vendor profile...');
+      
+      // Use the unified method that handles both admin and regular profiles
+      const response = await vendorApi.getVendorProfileUnified();
+      console.log('Unified profile response:', response);
+      
+      // Extract vendor data from various possible response structures
       let vendor = {};
       
-      if (profile.data?.vendor) {
-        vendor = profile.data.vendor;
-      } else if (profile.data) {
-        vendor = profile.data;
-      } else if (profile.vendor) {
-        vendor = profile.vendor;
+      if (response?.data?.data) {
+        // Structure: { success: true, data: { data: {...} } }
+        vendor = response.data.data;
+      } else if (response?.data) {
+        // Structure: { success: true, data: {...} }
+        vendor = response.data;
+      } else if (response?.vendor) {
+        // Structure: { vendor: {...} }
+        vendor = response.vendor;
       } else {
-        vendor = profile;
+        // Direct vendor object
+        vendor = response;
       }
 
+      console.log('Extracted vendor data:', vendor);
       setVendorData(vendor);
       
-      setFormData({
-        name: vendor.name || '',
+      // Map backend field names to frontend field names with proper fallbacks
+      const newFormData = {
+        name: vendor.name || vendor.vendorName || '',
         email: vendor.email || '',
-        phoneNumber: vendor.phoneNumber || '',
-        location: vendor.location || '',
-        mallName: vendor.mallName || vendor.shop?.name || '',
-        shopAddress: vendor.shopAddress || vendor.shop?.address || '',
-        vendorShopDescription: vendor.vendorShopDescription || vendor.shop?.description || '',
-        vendorShopOpeningTime: vendor.vendorShopOpeningTime || vendor.shop?.openingTime || '',
-        vendorShopClosingTime: vendor.vendorShopClosingTime || vendor.shop?.closingTime || '',
-        vendorShopNumberOfFloors: vendor.vendorShopNumberOfFloors || vendor.shop?.numberOfFloors || '',
-        vendorShopNumberOfStalls: vendor.vendorShopNumberOfStalls || vendor.shop?.numberOfStalls || '',
-        vendorLicenseNumber: vendor.vendorLicenseNumber || ''
-      });
+        phoneNumber: vendor.Phone || vendor.phoneNumber || vendor.contactNumber || vendor.vendorContactNumber || '',
+        location: vendor.location || vendor.vendorLocation || '',
+        mallName: vendor.mallName || vendor.shop?.name || vendor.shopName || '',
+        shopAddress: vendor.Address || vendor.shopAddress || vendor.vendorShopAddress || vendor.shop?.address || '',
+        vendorShopDescription: vendor.vendorShopDescription || vendor.shop?.description || vendor.description || '',
+        vendorShopOpeningTime: vendor.vendorShopOpeningTime || vendor.shop?.openingTime || vendor.openingTime || '',
+        vendorShopClosingTime: vendor.vendorShopClosingTime || vendor.shop?.closingTime || vendor.closingTime || '',
+        vendorShopNumberOfFloors: vendor.vendorShopNumberOfFloors || vendor.shop?.numberOfFloors || vendor.Floors || '',
+        vendorShopNumberOfStalls: vendor.vendorShopNumberOfStalls || vendor.shop?.numberOfStalls || vendor.Stalls || '',
+        vendorLicenseNumber: vendor.vendorLicenseNumber || vendor.licenseNumber || '',
+        profile: vendor.profile || vendor.profileImage || vendor.profilePicture || '',
+        role: vendor.role || '',
+        plan: vendor.plan || ''
+      };
 
-      if (vendor.profileImage || vendor.profile) {
-        setProfilePreview(vendor.profileImage || vendor.profile);
+      console.log('Mapped form data:', newFormData);
+      setFormData(newFormData);
+
+      // Set profile preview if profile image exists
+      if (newFormData.profile) {
+        setProfilePreview(newFormData.profile);
       }
 
     } catch (error) {
       console.error('Failed to load profile:', error);
-      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-        navigate('/vendor/login');
-      } else {
-        setErrors({ general: 'Failed to load profile: ' + error.message });
+      
+      // If it's a 403/401, rethrow to be caught by parent
+      if (error.message?.includes('403') || 
+          error.message?.includes('401') || 
+          error.message?.includes('Access denied')) {
+        throw error;
       }
-    } finally {
-      setLoading(false);
+      
+      // Otherwise just set error message
+      setErrors({ general: 'Failed to load profile: ' + (error.message || 'Unknown error') });
     }
   };
 
@@ -174,13 +219,13 @@ const VendorProfile = () => {
   const validateProfile = () => {
     const newErrors = {};
     
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    if (!formData.name?.trim()) newErrors.name = 'Name is required';
+    if (!formData.email?.trim()) newErrors.email = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) newErrors.email = 'Email is invalid';
-    if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
-    if (!formData.location.trim()) newErrors.location = 'Location is required';
-    if (!formData.mallName.trim()) newErrors.mallName = 'Shop name is required';
-    if (!formData.shopAddress.trim()) newErrors.shopAddress = 'Shop address is required';
+    if (!formData.phoneNumber?.trim()) newErrors.phoneNumber = 'Phone number is required';
+    if (!formData.location?.trim()) newErrors.location = 'Location is required';
+    if (!formData.mallName?.trim()) newErrors.mallName = 'Shop name is required';
+    if (!formData.shopAddress?.trim()) newErrors.shopAddress = 'Shop address is required';
     
     return newErrors;
   };
@@ -210,8 +255,17 @@ const VendorProfile = () => {
     setUpdating(true);
 
     try {
+      // Prepare data for API - map frontend fields to backend expected fields
       const updateData = {
-        ...formData,
+        name: formData.name,
+        email: formData.email,
+        Phone: formData.phoneNumber, // Backend expects "Phone" with capital P
+        location: formData.location,
+        mallName: formData.mallName,
+        Address: formData.shopAddress, // Backend expects "Address" with capital A
+        vendorShopDescription: formData.vendorShopDescription,
+        vendorShopOpeningTime: formData.vendorShopOpeningTime,
+        vendorShopClosingTime: formData.vendorShopClosingTime,
         vendorShopNumberOfFloors: parseInt(formData.vendorShopNumberOfFloors) || 0,
         vendorShopNumberOfStalls: parseInt(formData.vendorShopNumberOfStalls) || 0
       };
@@ -224,6 +278,7 @@ const VendorProfile = () => {
       setSuccessMessage('Profile updated successfully!');
       setErrors({});
       
+      // Reload profile after update
       setTimeout(() => {
         loadVendorProfile();
       }, 1000);
@@ -417,7 +472,10 @@ const VendorProfile = () => {
           {/* Error Message */}
           {errors.general && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-              <p className="text-red-700">{errors.general}</p>
+              <div className="flex">
+                <FaExclamationTriangle className="h-5 w-5 text-red-400 mr-3 flex-shrink-0 mt-0.5" />
+                <p className="text-red-700">{errors.general}</p>
+              </div>
             </div>
           )}
 

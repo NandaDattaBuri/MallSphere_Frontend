@@ -2,11 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Key, Clock, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import OTPInput from './OTPInput';
 
-const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
+const OtpVerification = ({ 
+  email, 
+  onVerify, 
+  onResend, 
+  onBack, 
+  isLoading,
+  externalError = '', // Add external error prop
+  isResending = false, // Add resending state
+  resendCooldown = 0 // Add resend cooldown from parent
+}) => {
   const [otpTimer, setOtpTimer] = useState(120); // 2 minutes
   const [canResendOtp, setCanResendOtp] = useState(false);
   const [otp, setOtp] = useState('');
-  const [error, setError] = useState('');
+  const [localError, setLocalError] = useState('');
+
+  // Combine external and local errors
+  const error = externalError || localError;
 
   // OTP Timer Effect
   useEffect(() => {
@@ -21,6 +33,13 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
     return () => clearInterval(timer);
   }, [otpTimer]);
 
+  // Reset timer when OTP expires
+  useEffect(() => {
+    if (externalError?.includes('expired')) {
+      setCanResendOtp(true);
+    }
+  }, [externalError]);
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -29,26 +48,46 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
 
   const handleOtpComplete = (completeOtp) => {
     setOtp(completeOtp);
-    setError('');
+    setLocalError('');
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (otp.length !== 6) {
-      setError('Please enter the 6-digit OTP');
+      setLocalError('Please enter the 6-digit OTP');
       return;
     }
-    onVerify(email, otp);
-  };
-
-  const handleResend = () => {
-    if (canResendOtp) {
-      onResend(email);
-      setOtpTimer(120);
-      setCanResendOtp(false);
-      setOtp('');
-      setError('');
+    
+    try {
+      await onVerify(email, otp);
+    } catch (error) {
+      // Handle specific error cases
+      if (error.message === 'expired') {
+        setLocalError('OTP has expired. Please request a new one.');
+        setCanResendOtp(true);
+      } else if (error.message === 'invalid') {
+        setLocalError('Invalid OTP. Please check and try again.');
+      } else {
+        setLocalError(error.message || 'Verification failed. Please try again.');
+      }
     }
   };
+
+  const handleResend = async () => {
+    if (canResendOtp || resendCooldown === 0) {
+      try {
+        await onResend(email);
+        setOtpTimer(120);
+        setCanResendOtp(false);
+        setOtp('');
+        setLocalError('');
+      } catch (error) {
+        setLocalError(error.message || 'Failed to resend OTP');
+      }
+    }
+  };
+
+  // Determine if resend button should be enabled
+  const isResendEnabled = (canResendOtp || resendCooldown === 0) && !isResending && !isLoading;
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8">
@@ -75,11 +114,22 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
         </div>
       </div>
 
+      {/* Error Message Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-red-500 mr-2 flex-shrink-0" />
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        </div>
+      )}
+
       {/* OTP Input Component */}
       <OTPInput
         length={6}
         onComplete={handleOtpComplete}
         error={error}
+        disabled={isLoading || isResending}
       />
       
       <p className="text-center text-sm text-slate-500 mt-4 mb-8">
@@ -89,7 +139,7 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
       {/* Verify Button */}
       <button
         onClick={handleVerify}
-        disabled={isLoading || otp.length !== 6}
+        disabled={isLoading || otp.length !== 6 || isResending}
         className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold py-4 rounded-xl hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100 mb-4"
       >
         {isLoading ? (
@@ -104,18 +154,20 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
 
       {/* Resend OTP Button */}
       <div className="text-center">
-        {canResendOtp ? (
+        {isResendEnabled ? (
           <button
             onClick={handleResend}
             className="text-blue-600 hover:text-blue-800 font-medium inline-flex items-center space-x-2"
-            disabled={isLoading}
+            disabled={isLoading || isResending}
           >
-            <RefreshCw className="w-4 h-4" />
-            <span>Resend OTP</span>
+            <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+            <span>{isResending ? 'Sending...' : 'Resend OTP'}</span>
           </button>
         ) : (
           <p className="text-slate-500 text-sm">
-            Resend OTP available in {formatTime(otpTimer)}
+            {resendCooldown > 0 
+              ? `Resend OTP available in ${resendCooldown}s`
+              : `Resend OTP available in ${formatTime(otpTimer)}`}
           </p>
         )}
       </div>
@@ -125,7 +177,7 @@ const OtpVerification = ({ email, onVerify, onResend, onBack, isLoading }) => {
         <button
           onClick={onBack}
           className="text-slate-600 hover:text-slate-800 font-medium"
-          disabled={isLoading}
+          disabled={isLoading || isResending}
         >
           ← Back to registration
         </button>

@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import AuthLayout from '../components/AuthLayout';
-import FormInput from '../components/FormInput';
-import { vendorApi } from '../hooks/vendorApi';
+import AuthLayout from '../../components/AuthLayout';
+import FormInput from '../../components/FormInput';
+import { sellerApi } from '../../hooks/sellerApi';
 import { FaEnvelope, FaKey, FaArrowLeft, FaCheckCircle, FaLock } from 'react-icons/fa';
 
-const VendorForgotPassword = () => {
+const StallOwnerForgotPassword = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
   const [step, setStep] = useState(1); // 1: Request OTP, 2: Reset Password
   const [formData, setFormData] = useState({
     email: location.state?.email || '',
-    vendorLicenseNumber: '',
     otp: '',
     newPassword: '',
     confirmPassword: ''
@@ -41,10 +40,6 @@ const VendorForgotPassword = () => {
       newErrors.email = 'Email is required';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address';
-    }
-    
-    if (!formData.vendorLicenseNumber) {
-      newErrors.vendorLicenseNumber = 'License number is required';
     }
 
     return newErrors;
@@ -88,12 +83,10 @@ const VendorForgotPassword = () => {
     setIsLoading(true);
 
     try {
-      console.log('Requesting password reset OTP...');
+      console.log('Requesting password reset OTP for stall owner...');
       
-      const response = await vendorApi.forgotPassword(
-        formData.email, 
-        formData.vendorLicenseNumber
-      );
+      // sellerApi.forgotPassword only accepts email parameter
+      const response = await sellerApi.forgotPassword(formData.email);
 
       console.log('OTP request successful:', response);
       setApiSuccess('OTP has been sent to your email. Please check your inbox.');
@@ -104,8 +97,8 @@ const VendorForgotPassword = () => {
       
       if (error.message.includes('Network')) {
         setApiError('Network error. Please check your internet connection.');
-      } else if (error.message.includes('not found') || error.message.includes('invalid')) {
-        setApiError('No account found with this email and license number.');
+      } else if (error.message.includes('not found')) {
+        setApiError('No stall owner account found with this email address.');
       } else {
         setApiError(error.message || 'Failed to send OTP. Please try again.');
       }
@@ -128,9 +121,10 @@ const VendorForgotPassword = () => {
     setIsLoading(true);
 
     try {
-      console.log('Resetting password...');
+      console.log('Resetting password for stall owner...');
       
-      const response = await vendorApi.resetPassword(
+      // sellerApi.resetPassword accepts email, otp, newPassword, confirmPassword
+      const response = await sellerApi.resetPassword(
         formData.email,
         formData.otp,
         formData.newPassword,
@@ -142,7 +136,7 @@ const VendorForgotPassword = () => {
       
       // Redirect to login after 3 seconds
       setTimeout(() => {
-        navigate('/vendor/login', {
+        navigate('/stall-owner/login', {
           state: {
             message: 'Password reset successful! Please login with your new password.',
             email: formData.email
@@ -166,19 +160,24 @@ const VendorForgotPassword = () => {
   };
 
   const handleBackToLogin = () => {
-    navigate('/vendor/login');
+    navigate('/stall-owner/login');
   };
 
   const handleBack = () => {
     if (step === 2) {
       setStep(1);
     } else {
-      navigate('/vendor/login');
+      navigate('/stall-owner/login');
     }
   };
 
   return (
-    <AuthLayout type="forgot-password" role="vendor" backLink="/vendor/login">
+    <AuthLayout 
+      type="forgot-password" 
+      role="stall-owner" 
+      backLink="/stall-owner/login"
+      title="Stall Owner Password Reset"
+    >
       <div className="bg-white rounded-2xl p-8 shadow-xl">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -186,25 +185,37 @@ const VendorForgotPassword = () => {
               {step === 1 ? 'Reset Your Password' : 'Set New Password'}
             </h3>
             <span className="px-3 py-1 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-xs font-semibold rounded-full">
-              {step === 1 ? 'Step 1' : 'Step 2'}
+              {step === 1 ? 'Step 1/2' : 'Step 2/2'}
             </span>
           </div>
           <p className="text-gray-600 mb-6">
-            {step === 1 ? 'Enter your email and license number to receive a reset OTP' : 'Enter the OTP and your new password'}
+            {step === 1 
+              ? 'Enter your registered email address to receive a password reset OTP' 
+              : 'Enter the OTP sent to your email and set your new password'}
           </p>
         </div>
 
         {/* API Error Message */}
         {apiError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{apiError}</p>
+            <p className="text-red-700 text-sm flex items-center">
+              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              {apiError}
+            </p>
           </div>
         )}
 
         {/* API Success Message */}
         {apiSuccess && (
           <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-green-700 text-sm">{apiSuccess}</p>
+            <p className="text-green-700 text-sm flex items-center">
+              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              {apiSuccess}
+            </p>
           </div>
         )}
 
@@ -215,7 +226,7 @@ const VendorForgotPassword = () => {
               label="Email Address"
               type="email"
               name="email"
-              placeholder="your.shop@email.com"
+              placeholder="your.stall@email.com"
               value={formData.email}
               onChange={handleChange}
               error={errors.email}
@@ -223,24 +234,27 @@ const VendorForgotPassword = () => {
               required
             />
 
-            <FormInput
-              label="Vendor License Number"
-              type="text"
-              name="vendorLicenseNumber"
-              placeholder="LIC12345"
-              value={formData.vendorLicenseNumber}
-              onChange={handleChange}
-              error={errors.vendorLicenseNumber}
-              icon={<FaKey className="text-gray-400" />}
-              required
-            />
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs text-blue-700">
+                <strong>Note:</strong> An OTP will be sent to your registered email address. 
+                The OTP is valid for 10 minutes.
+              </p>
+            </div>
 
             <button
               type="submit"
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-3 px-6 rounded-lg font-semibold text-lg transition-all duration-300 hover:shadow-lg hover:from-indigo-700 hover:to-indigo-800 disabled:opacity-70 disabled:cursor-not-allowed mt-6"
             >
-              {isLoading ? 'Sending OTP...' : 'Send Reset OTP'}
+              {isLoading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Sending OTP...
+                </span>
+              ) : 'Send Reset OTP'}
             </button>
           </form>
         )}
@@ -248,11 +262,17 @@ const VendorForgotPassword = () => {
         {/* Step 2: Reset Password */}
         {step === 2 && (
           <form onSubmit={handleResetPassword}>
+            <div className="mb-4 p-3 bg-green-50 rounded-lg border border-green-100">
+              <p className="text-sm text-green-700">
+                <strong>Email:</strong> {formData.email}
+              </p>
+            </div>
+
             <FormInput
               label="6-digit OTP"
               type="text"
               name="otp"
-              placeholder="Enter OTP sent to your email"
+              placeholder="Enter 6-digit OTP"
               value={formData.otp}
               onChange={handleChange}
               error={errors.otp}
@@ -300,7 +320,15 @@ const VendorForgotPassword = () => {
                 disabled={isLoading}
                 className="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white py-3 px-6 rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition duration-300 disabled:opacity-70"
               >
-                {isLoading ? 'Resetting...' : 'Reset Password'}
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Resetting...
+                  </span>
+                ) : 'Reset Password'}
               </button>
             </div>
           </form>
@@ -309,7 +337,7 @@ const VendorForgotPassword = () => {
         <div className="mt-8 text-center">
           <p className="text-gray-600">
             Remember your password?{' '}
-            <Link to="/vendor/login" className="text-indigo-600 hover:text-indigo-800 font-semibold">
+            <Link to="/stall-owner/login" className="text-indigo-600 hover:text-indigo-800 font-semibold">
               Back to login
             </Link>
           </p>
@@ -325,7 +353,15 @@ const VendorForgotPassword = () => {
           </div>
           <div className="ml-3">
             <p className="text-sm text-indigo-800">
-              <strong>Note:</strong> The OTP is valid for 10 minutes. Check your spam folder if you don't see the email.
+              <strong>Note:</strong> The OTP is valid for 10 minutes only. 
+              If you don't receive the email, please check your spam folder or 
+              <button 
+                onClick={handleRequestOTP} 
+                className="text-indigo-600 hover:text-indigo-800 font-semibold underline ml-1"
+                disabled={isLoading}
+              >
+                request a new OTP
+              </button>.
             </p>
           </div>
         </div>
@@ -334,4 +370,4 @@ const VendorForgotPassword = () => {
   );
 };
 
-export default VendorForgotPassword;
+export default StallOwnerForgotPassword;

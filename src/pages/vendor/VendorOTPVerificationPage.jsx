@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import AuthLayout from '../components/AuthLayout';
-import OtpVerification from '../components/auth/OtpVerification';
-import { vendorApi } from '../hooks/vendorApi';
+import AuthLayout from '../../components/AuthLayout';
+import OtpVerification from '../../components/auth/OtpVerification';
+import { vendorApi } from '../../hooks/vendorApi';
 import { CheckCircle } from 'lucide-react';
 
 const VendorOTPVerificationPage = () => {

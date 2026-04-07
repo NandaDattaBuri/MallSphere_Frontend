@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AuthLayout from '../components/AuthLayout';
-import FormInput from '../components/FormInput';
-import sellerApi from '../hooks/sellerApi'
+import AuthLayout from '../../components/AuthLayout';
+import FormInput from '../../components/FormInput';
+import sellerApi from '../../hooks/sellerApi'
 import {
   FaUser,
   FaEnvelope,

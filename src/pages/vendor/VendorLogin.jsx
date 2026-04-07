@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import AuthLayout from '../components/AuthLayout';
-import FormInput from '../components/FormInput';
+import AuthLayout from '../../components/AuthLayout';
+import FormInput from '../../components/FormInput';
 import { FaEnvelope, FaLock } from 'react-icons/fa';
-import { vendorApi } from '../hooks/vendorApi';
+import { vendorApi } from '../../hooks/vendorApi';
 
 const VendorLogin = () => {
   const navigate = useNavigate();
