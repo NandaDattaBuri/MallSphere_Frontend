@@ -43,9 +43,6 @@ const VendorForgotPassword = () => {
       newErrors.email = 'Please enter a valid email address';
     }
     
-    if (!formData.vendorLicenseNumber) {
-      newErrors.vendorLicenseNumber = 'License number is required';
-    }
 
     return newErrors;
   };
@@ -92,7 +89,6 @@ const VendorForgotPassword = () => {
       
       const response = await vendorApi.forgotPassword(
         formData.email, 
-        formData.vendorLicenseNumber
       );
 
       console.log('OTP request successful:', response);
@@ -220,18 +216,6 @@ const VendorForgotPassword = () => {
               onChange={handleChange}
               error={errors.email}
               icon={<FaEnvelope className="text-gray-400" />}
-              required
-            />
-
-            <FormInput
-              label="Vendor License Number"
-              type="text"
-              name="vendorLicenseNumber"
-              placeholder="LIC12345"
-              value={formData.vendorLicenseNumber}
-              onChange={handleChange}
-              error={errors.vendorLicenseNumber}
-              icon={<FaKey className="text-gray-400" />}
               required
             />
 
