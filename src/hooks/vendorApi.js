@@ -303,10 +303,10 @@ export const vendorApi = {
     }
   },
 
-  forgotPassword: async (email, vendorLicenseNumber) => {
+  forgotPassword: async (email) => {
     const response = await baseFetch(`${AUTH_URL}/vendor-forgot-password`, {
       method: 'POST',
-      body: JSON.stringify({ email, vendorLicenseNumber }),
+      body: JSON.stringify({ email }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.message || data?.error || 'Failed to send reset OTP');
