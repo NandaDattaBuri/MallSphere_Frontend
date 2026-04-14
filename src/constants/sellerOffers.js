@@ -13,9 +13,17 @@ export const FILTERS = [
   { key: "scheduled", label: "Scheduled" },
   { key: "expired", label: "Expired" },
   { key: "disabled", label: "Disabled" },
+  { key: "flash", label: "⚡ Flash Deals" },
+];
+
+export const DEAL_TYPE_OPTIONS = [
+  { value: 'all', label: 'All Types' },
+  { value: 'percentage', label: '📊 Percentage' },
+  { value: 'flat', label: '💰 Flat Amount' },
 ];
 
 export const emptyForm = (shopId = "") => ({
+  // Regular offer fields
   offerTitle: "", 
   offerDescription: "", 
   offerType: "percentage", 
@@ -25,4 +33,17 @@ export const emptyForm = (shopId = "") => ({
   offerTermsAndConditions: "",
   offerImages: [],
   shopId: shopId,
+  
+  // Flash deal fields
+  flashDealTitle: "",
+  flashDealDescription: "",
+  flashDealType: "percentage",
+  flashDealValue: "",
+  flashDealStartTime: "",
+  flashDealEndTime: "",
+  flashDealTermsAndConditions: "",
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  
+  // Common field to determine type
+  offerCategory: "regular" // "regular" or "flash"
 });

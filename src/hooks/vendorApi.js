@@ -303,10 +303,10 @@ export const vendorApi = {
     }
   },
 
-  forgotPassword: async (email, vendorLicenseNumber) => {
+  forgotPassword: async (email) => {
     const response = await baseFetch(`${AUTH_URL}/vendor-forgot-password`, {
       method: 'POST',
-      body: JSON.stringify({ email, vendorLicenseNumber }),
+      body: JSON.stringify({ email }),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data?.message || data?.error || 'Failed to send reset OTP');
@@ -561,6 +561,17 @@ export const vendorApi = {
       return [];
     } catch {
       return [];
+    }
+  },
+
+  deleteVendor: async (vendorId) => {
+    try {
+      return await apiFetch(`${API_BASE_URL}/delete-vendor/${vendorId}`, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      console.error('Delete Vendor Error:', error);
+      throw error;
     }
   },
 };

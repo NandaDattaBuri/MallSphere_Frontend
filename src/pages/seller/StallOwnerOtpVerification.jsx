@@ -16,11 +16,13 @@ const StallOwnerOtpVerification = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isResending, setIsResending] = useState(false);
   const [otpExpired, setOtpExpired] = useState(false);
+  const [fromLogin, setFromLogin] = useState(false);
 
   useEffect(() => {
     // Get email from navigation state or localStorage
-    if (location.state && location.state.email) {
-      setEmail(location.state.email);
+    if (location.state) {
+      setEmail(location.state.email || '');
+      setFromLogin(location.state.fromLogin || false);
     } else {
       // Try to get from localStorage
       const pendingVerification = localStorage.getItem('pendingStallOwnerVerification');
@@ -29,6 +31,7 @@ const StallOwnerOtpVerification = () => {
           const data = JSON.parse(pendingVerification);
           if (data.email) {
             setEmail(data.email);
+            setFromLogin(data.fromLogin || false);
             
             // Check if OTP might be expired (if timestamp is stored)
             if (data.timestamp) {
@@ -39,7 +42,12 @@ const StallOwnerOtpVerification = () => {
               }
             }
           } else {
-            navigate('/stall-owner/register');
+            // No verification data found, redirect to appropriate page
+            if (fromLogin) {
+              navigate('/stall-owner/login');
+            } else {
+              navigate('/stall-owner/register');
+            }
           }
         } catch (error) {
           console.error('Error parsing verification data:', error);
@@ -49,7 +57,7 @@ const StallOwnerOtpVerification = () => {
         navigate('/stall-owner/register');
       }
     }
-  }, [location.state, navigate]);
+  }, [location.state, navigate, fromLogin]);
 
   useEffect(() => {
     // Handle resend cooldown timer
@@ -70,14 +78,30 @@ const StallOwnerOtpVerification = () => {
       console.log('OTP verification response:', response);
       
       setVerificationSuccess(true);
-      localStorage.removeItem('pendingStallOwnerVerification');
+      
+      // Mark as verified in pending data
+      const pendingData = localStorage.getItem('pendingStallOwnerVerification');
+      if (pendingData) {
+        const data = JSON.parse(pendingData);
+        data.verified = true;
+        data.verifiedAt = new Date().toISOString();
+        localStorage.setItem('pendingStallOwnerVerification', JSON.stringify(data));
+      }
+      
+      // Store verification timestamp
+      localStorage.setItem('stallOwnerEmailVerified', 'true');
+      localStorage.setItem('stallOwnerVerifiedEmail', email);
+      localStorage.setItem('stallOwnerVerificationTime', new Date().toISOString());
       
       setTimeout(() => {
+        localStorage.removeItem('pendingStallOwnerVerification');
+        
         navigate('/stall-owner/login', {
           state: {
             message: 'Email verified successfully! You can now login to your stall owner account.',
             verifiedEmail: email,
-            verified: true
+            verified: true,
+            fromVerification: true
           }
         });
       }, 2000);
@@ -121,10 +145,10 @@ const StallOwnerOtpVerification = () => {
       // Update localStorage with new timestamp
       localStorage.setItem('pendingStallOwnerVerification', JSON.stringify({
         email,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        fromLogin: fromLogin
       }));
       
-      // Show success message
       alert('A new verification code has been sent to your email address. Please check your inbox.');
       
     } catch (error) {
@@ -142,7 +166,12 @@ const StallOwnerOtpVerification = () => {
   };
 
   const handleBack = () => {
-    navigate('/stall-owner/register');
+    if (!fromLogin) {
+      localStorage.removeItem('pendingStallOwnerVerification');
+      navigate('/stall-owner/register');
+    } else {
+      navigate('/stall-owner/login');
+    }
   };
 
   // Show error message with option to resend
@@ -151,7 +180,7 @@ const StallOwnerOtpVerification = () => {
       <AuthLayout 
         type="verify" 
         role="stall-owner" 
-        backLink="/stall-owner/register"
+        backLink={fromLogin ? "/stall-owner/login" : "/stall-owner/register"}
         title="Stall Owner Verification"
       >
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8">
@@ -190,7 +219,7 @@ const StallOwnerOtpVerification = () => {
               onClick={handleBack}
               className="mt-4 text-sm text-slate-600 hover:text-slate-900"
             >
-              ← Back to Registration
+              ← Back to {fromLogin ? 'Login' : 'Registration'}
             </button>
           </div>
         </div>
@@ -202,12 +231,12 @@ const StallOwnerOtpVerification = () => {
     <AuthLayout 
       type="verify" 
       role="stall-owner" 
-      backLink="/stall-owner/register"
+      backLink={fromLogin ? "/stall-owner/login" : "/stall-owner/register"}
       title="Stall Owner Verification"
     >
       {verificationSuccess ? (
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8 text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
             <CheckCircle className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 mb-4">
@@ -238,8 +267,26 @@ const StallOwnerOtpVerification = () => {
             isResending={isResending}
             resendCooldown={resendCooldown}
             title="Verify Your Stall Owner Account"
-            subtitle={`We've sent a 6-digit verification code to ${email || 'your email'}`}
+            subtitle={fromLogin ? 
+              "Please verify your email to access your stall owner account. We've sent a 6-digit verification code to:" :
+              `We've sent a 6-digit verification code to ${email || 'your email'}`}
           />
+          
+          {fromLogin && (
+            <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-amber-800">
+                    <strong>Important:</strong> You need to verify your email before you can login to your stall owner dashboard. 
+                    If you didn't receive the code, check your spam folder or click "Resend Code".
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
             <div className="flex">
@@ -250,7 +297,7 @@ const StallOwnerOtpVerification = () => {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-blue-800">
-                  <strong>Important:</strong> The verification code will expire in 10 minutes. 
+                  <strong>Note:</strong> The verification code will expire in 10 minutes. 
                   Please check your spam or junk folder if you don't see the email.
                 </p>
               </div>

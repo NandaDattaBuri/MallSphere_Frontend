@@ -33,11 +33,10 @@ export default function StallOwnerDashboard() {
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [dealType, setDealType] = useState("all");
 
-  // allOffers holds the full unfiltered list from getCreatedOffers.
-  // We never replace this with status-specific endpoint data —
-  // all filtering is done client-side to avoid 403s on those endpoints.
   const [allOffers, setAllOffers] = useState([]);
+  const [allFlashDeals, setAllFlashDeals] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -56,7 +55,8 @@ export default function StallOwnerDashboard() {
     active: 0,
     scheduled: 0,
     expired: 0,
-    disabled: 0
+    disabled: 0,
+    flash: 0
   });
 
   // ─── Auth Check ───────────────────────────────
@@ -76,14 +76,14 @@ export default function StallOwnerDashboard() {
   useEffect(() => {
     if (authChecked) {
       fetchProfile();
-      fetchAllOffers();
+      fetchAllData();
     }
   }, [authChecked]);
 
   // Reset to page 1 whenever filter or search changes
   useEffect(() => {
     setPage(1);
-  }, [filter, search]);
+  }, [filter, search, dealType]);
 
   // ─── Get Shop ID ──────────────────────────────
   const getShopId = async () => {
@@ -125,30 +125,70 @@ export default function StallOwnerDashboard() {
     }
   };
 
-  // ─── Fetch All Offers (client-side filtering only) ───
-  // We intentionally ONLY call getCreatedOffers here.
-  // The per-status endpoints (get-scheduled-offers, get-expired-offers, etc.)
-  // return 403 "Access denied" for non-approved sellers, so we avoid them entirely.
-  // Stats and filtered views are derived from this single full list.
-  const fetchAllOffers = async () => {
+  // ─── Fetch All Data (Offers + Flash Deals) ────
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const response = await sellerApi.getCreatedOffers();
+      // Fetch regular offers
+      const offersResponse = await sellerApi.getCreatedOffers();
+      
+      // Always fetch all flash deals
+      const flashDealsResponse = await sellerApi.getSellerFlashDeals();
 
-      if (response.success && response.data) {
-        const offersList = response.data.offers || [];
+      // Process regular offers
+      if (offersResponse.success && offersResponse.data) {
+        const offersList = offersResponse.data.offers || [];
         setAllOffers(offersList);
-        setStats(calculateStats(offersList));
       } else {
         setAllOffers([]);
       }
+
+      // Process flash deals
+      if (flashDealsResponse.success && flashDealsResponse.data) {
+        setAllFlashDeals(flashDealsResponse.data || []);
+      } else {
+        setAllFlashDeals([]);
+      }
+
+      // Calculate combined stats
+      const offersList = offersResponse.success ? (offersResponse.data?.offers || []) : [];
+      const flashList = flashDealsResponse.success ? (flashDealsResponse.data || []) : [];
+      
+      const transformedFlashDeals = flashList.map(deal => ({
+        ...deal,
+        offerStatus: deal.status,
+        isEnabled: deal.isEnabled !== false,
+        offerTitle: deal.title,
+        offerType: deal.dealType,
+        offerValue: deal.dealValue
+      }));
+
+      const allItems = [...offersList, ...transformedFlashDeals];
+      
+      setStats({
+        all: allItems.length,
+        active: allItems.filter(item => 
+          item.offerStatus === 'active' || item.status === 'active'
+        ).length,
+        scheduled: allItems.filter(item => 
+          item.offerStatus === 'scheduled' || item.status === 'scheduled'
+        ).length,
+        expired: allItems.filter(item => 
+          item.offerStatus === 'expired' || item.status === 'expired'
+        ).length,
+        disabled: allItems.filter(item => !item.isEnabled).length,
+        flash: flashList.length
+      });
+
     } catch (error) {
-      console.error('Failed to fetch offers:', error);
-      handleAuthError(error, 'Failed to load offers');
+      console.error('Failed to fetch data:', error);
+      handleAuthError(error, 'Failed to load data');
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchAllOffers = fetchAllData;
 
   // ─── Auth Error Handler ───────────────────────
   const handleAuthError = (error, fallbackMsg) => {
@@ -171,11 +211,103 @@ export default function StallOwnerDashboard() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // ─── Client-Side Filtering & Pagination ───────
-  // All filtering is done locally from allOffers — no extra API calls needed.
-  const filtered = filterOffers(allOffers, filter, search);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // ─── Get Combined Items for Display ───────────
+  const getCombinedItems = () => {
+    let items = [];
+    
+    if (filter === 'flash') {
+      // Only show flash deals
+      items = allFlashDeals.map(deal => ({
+        ...deal,
+        _id: deal._id,
+        offerId: deal._id,
+        offerTitle: deal.title,
+        offerDescription: deal.description,
+        offerType: deal.dealType,
+        offerValue: deal.dealValue,
+        offerStatus: deal.status,
+        offerStartDate: deal.startTime,
+        offerEndDate: deal.endTime,
+        offerImages: deal.banners,
+        offerTermsAndConditions: deal.termsAndConditions,
+        isFlashDeal: true,
+        isEnabled: deal.isEnabled !== false,
+        flashDealStartTime: deal.startTime,
+        flashDealEndTime: deal.endTime,
+        flashDealTitle: deal.title,
+        flashDealDescription: deal.description,
+        flashDealType: deal.dealType,
+        flashDealValue: deal.dealValue,
+        flashDealTermsAndConditions: deal.termsAndConditions,
+        timezone: deal.timezone
+      }));
+      
+      // Apply deal type filter for flash deals
+      if (dealType !== 'all') {
+        items = items.filter(item => item.dealType === dealType);
+      }
+    } else {
+      // Transform regular offers
+      const regularItems = allOffers.map(offer => ({
+        ...offer,
+        isFlashDeal: false
+      }));
+      
+      // Transform flash deals to match offer structure
+      const flashItems = allFlashDeals.map(deal => ({
+        ...deal,
+        _id: deal._id,
+        offerId: deal._id,
+        offerTitle: deal.title,
+        offerDescription: deal.description,
+        offerType: deal.dealType,
+        offerValue: deal.dealValue,
+        offerStatus: deal.status,
+        offerStartDate: deal.startTime,
+        offerEndDate: deal.endTime,
+        offerImages: deal.banners,
+        offerTermsAndConditions: deal.termsAndConditions,
+        isFlashDeal: true,
+        isEnabled: deal.isEnabled !== false,
+        flashDealStartTime: deal.startTime,
+        flashDealEndTime: deal.endTime,
+        flashDealTitle: deal.title,
+        flashDealDescription: deal.description,
+        flashDealType: deal.dealType,
+        flashDealValue: deal.dealValue,
+        flashDealTermsAndConditions: deal.termsAndConditions,
+        timezone: deal.timezone
+      }));
+      
+      // Combine both
+      items = [...regularItems, ...flashItems];
+      
+      // Apply status filter
+      if (filter !== 'all') {
+        items = items.filter(item => {
+          const status = item.offerStatus || item.status;
+          return status === filter;
+        });
+      }
+    }
+
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      items = items.filter(item => {
+        const title = item.offerTitle || item.title || '';
+        const description = item.offerDescription || item.description || '';
+        return title.toLowerCase().includes(searchLower) ||
+               description.toLowerCase().includes(searchLower);
+      });
+    }
+
+    return items;
+  };
+
+  const combinedItems = getCombinedItems();
+  const totalPages = Math.max(1, Math.ceil(combinedItems.length / ITEMS_PER_PAGE));
+  const paged = combinedItems.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   // ─── Open Create Modal ────────────────────────
   const openCreate = async () => {
@@ -197,6 +329,15 @@ export default function StallOwnerDashboard() {
         offerStartDate: new Date().toISOString().split("T")[0],
         offerEndDate: new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
         offerTermsAndConditions: "",
+        flashDealTitle: "",
+        flashDealDescription: "",
+        flashDealType: "percentage",
+        flashDealValue: "",
+        flashDealStartTime: "",
+        flashDealEndTime: "",
+        flashDealTermsAndConditions: "",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offerCategory: "regular"
       });
       setImageFiles([]);
       setImagePreviews([]);
@@ -213,21 +354,32 @@ export default function StallOwnerDashboard() {
       const shopId = await getShopId();
 
       setEditing(offer);
+      const isFlashDeal = offer.isFlashDeal || !!offer.flashDealTitle;
+      
       setForm({
         shopId: shopId || "",
         offerTitle: offer.offerTitle || "",
         offerDescription: offer.offerDescription || "",
         offerType: offer.offerType || "percentage",
         offerValue: offer.offerValue || "",
-        offerStartDate: offer.offerStartDate?.split('T')[0] || offer.offerStartDate || "",
-        offerEndDate: offer.offerEndDate?.split('T')[0] || offer.offerEndDate || "",
+        offerStartDate: offer.offerStartDate?.split('T')[0] || "",
+        offerEndDate: offer.offerEndDate?.split('T')[0] || "",
         offerTermsAndConditions: offer.offerTermsAndConditions || "",
+        flashDealTitle: offer.flashDealTitle || offer.title || "",
+        flashDealDescription: offer.flashDealDescription || offer.description || "",
+        flashDealType: offer.flashDealType || offer.dealType || "percentage",
+        flashDealValue: offer.flashDealValue || offer.dealValue || "",
+        flashDealStartTime: offer.flashDealStartTime?.slice(0, 16) || offer.startTime?.slice(0, 16) || "",
+        flashDealEndTime: offer.flashDealEndTime?.slice(0, 16) || offer.endTime?.slice(0, 16) || "",
+        flashDealTermsAndConditions: offer.flashDealTermsAndConditions || offer.termsAndConditions || "",
+        timezone: offer.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offerCategory: isFlashDeal ? "flash" : "regular"
       });
       setImageFiles([]);
       setImagePreviews(
         offer.offerImages?.length
           ? offer.offerImages.map(img => img.url || img)
-          : []
+          : (offer.banners?.length ? offer.banners.map(b => b.url) : [])
       );
       setModal(true);
     } catch (error) {
@@ -239,9 +391,10 @@ export default function StallOwnerDashboard() {
   // ─── Image Change ─────────────────────────────
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
+    const maxImages = form.offerCategory === 'flash' ? 3 : 4;
 
-    if (files.length > 4) {
-      showToast('Maximum 4 images allowed', 'error');
+    if (files.length > maxImages) {
+      showToast(`Maximum ${maxImages} images allowed`, 'error');
       return;
     }
 
@@ -258,107 +411,292 @@ export default function StallOwnerDashboard() {
   // ─── Submit (Create / Edit) ───────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
     try {
-      const shopId = await getShopId();
+      const isFlashDeal = form.offerCategory === 'flash';
 
-      if (!shopId) {
-        showToast('Shop ID not found. Please refresh or login again.', 'error');
-        return;
+      if (isFlashDeal) {
+        if (!form.flashDealTitle?.trim()) {
+          showToast('Flash deal title is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.flashDealDescription?.trim()) {
+          showToast('Flash deal description is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.flashDealValue || Number(form.flashDealValue) <= 0) {
+          showToast('Valid discount value is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.flashDealStartTime) {
+          showToast('Start time is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.flashDealEndTime) {
+          showToast('End time is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.timezone) {
+          showToast('Timezone is required', 'error');
+          setLoading(false);
+          return;
+        }
+        
+        const startTime = new Date(form.flashDealStartTime);
+        const endTime = new Date(form.flashDealEndTime);
+        const now = new Date();
+        
+        if (startTime < now) {
+          showToast('Flash deal start time cannot be in the past', 'error');
+          setLoading(false);
+          return;
+        }
+        if (endTime <= startTime) {
+          showToast('Flash deal end time must be after start time', 'error');
+          setLoading(false);
+          return;
+        }
+        
+        const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+        if (durationHours > 48) {
+          showToast('Flash deal duration cannot exceed 48 hours', 'error');
+          setLoading(false);
+          return;
+        }
+        if (durationHours < 1) {
+          showToast('Flash deal duration must be at least 1 hour', 'error');
+          setLoading(false);
+          return;
+        }
+        
+        if (form.flashDealType === 'percentage') {
+          const value = Number(form.flashDealValue);
+          if (value <= 0 || value > 100) {
+            showToast('Percentage discount must be between 1 and 100', 'error');
+            setLoading(false);
+            return;
+          }
+        }
+      } else {
+        if (!form.offerTitle?.trim()) {
+          showToast('Offer title is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.offerDescription?.trim()) {
+          showToast('Offer description is required', 'error');
+          setLoading(false);
+          return;
+        }
+        if (!form.offerValue || Number(form.offerValue) <= 0) {
+          showToast('Valid discount value is required', 'error');
+          setLoading(false);
+          return;
+        }
+
+        const dateValidation = validateOfferDates(form.offerStartDate, form.offerEndDate);
+        if (!dateValidation.valid) {
+          showToast(dateValidation.error, 'error');
+          setLoading(false);
+          return;
+        }
+        
+        if (form.offerType === 'percentage') {
+          const value = Number(form.offerValue);
+          if (value <= 0 || value > 100) {
+            showToast('Percentage discount must be between 1 and 100', 'error');
+            setLoading(false);
+            return;
+          }
+        }
       }
 
-      if (!form.offerTitle?.trim()) return showToast('Offer title is required', 'error');
-      if (!form.offerDescription?.trim()) return showToast('Offer description is required', 'error');
-      if (!form.offerValue || Number(form.offerValue) <= 0) return showToast('Valid discount value is required', 'error');
-
-      const dateValidation = validateOfferDates(form.offerStartDate, form.offerEndDate);
-      if (!dateValidation.valid) return showToast(dateValidation.error, 'error');
-
-      const discountValidation = validateDiscountValue(form.offerType, form.offerValue);
-      if (!discountValidation.valid) return showToast(discountValidation.error, 'error');
-
-      const offerData = {
-        shopId,
-        offerTitle: form.offerTitle.trim(),
-        offerDescription: form.offerDescription.trim(),
-        offerStartDate: form.offerStartDate,
-        offerEndDate: form.offerEndDate,
-        offerTermsAndConditions: form.offerTermsAndConditions.trim() || 'No terms and conditions',
-        offerType: form.offerType,
-        offerValue: Number(form.offerValue),
-      };
-
       const cleanupPreviews = () => {
-        imagePreviews.forEach(p => { if (p.startsWith('blob:')) URL.revokeObjectURL(p); });
+        imagePreviews.forEach(p => { 
+          if (p.startsWith('blob:')) URL.revokeObjectURL(p); 
+        });
         setImageFiles([]);
         setImagePreviews([]);
       };
 
       if (editing) {
         const offerId = editing.offerId || editing._id;
-        const updatedFields = getChangedFields(editing, offerData);
+        
+        if (isFlashDeal) {
+          const flashDealData = {
+            flashDealTitle: form.flashDealTitle.trim(),
+            flashDealDescription: form.flashDealDescription.trim(),
+            flashDealStartTime: form.flashDealStartTime,
+            flashDealEndTime: form.flashDealEndTime,
+            flashDealTermsAndConditions: form.flashDealTermsAndConditions?.trim() || '',
+            flashDealType: form.flashDealType,
+            flashDealValue: Number(form.flashDealValue),
+            timezone: form.timezone,
+          };
+          
+          const response = await sellerApi.editFlashDeal(offerId, flashDealData, imageFiles);
+          
+          if (response.success) {
+            showToast('Flash deal updated successfully!', 'success');
+            await fetchAllData();
+            setModal(false);
+            cleanupPreviews();
+          } else {
+            showToast(response.message || 'Failed to update flash deal', 'error');
+          }
+        } else {
+          const shopId = await getShopId();
+          if (!shopId) {
+            showToast('Shop ID not found. Please refresh or login again.', 'error');
+            setLoading(false);
+            return;
+          }
 
-        if (Object.keys(updatedFields).length === 0 && imageFiles.length === 0) {
-          showToast('No changes detected', 'info');
-          setModal(false);
-          return;
-        }
-
-        const response = await sellerApi.editOffer(offerId, updatedFields, imageFiles);
-        if (response.success) {
-          showToast('Offer updated successfully!');
-          await fetchAllOffers();
-          setModal(false);
-          cleanupPreviews();
+          const offerData = {
+            shopId,
+            offerTitle: form.offerTitle.trim(),
+            offerDescription: form.offerDescription.trim(),
+            offerStartDate: form.offerStartDate,
+            offerEndDate: form.offerEndDate,
+            offerTermsAndConditions: form.offerTermsAndConditions?.trim() || '',
+            offerType: form.offerType,
+            offerValue: Number(form.offerValue),
+          };
+          
+          const updatedFields = getChangedFields(editing, offerData);
+          
+          if (Object.keys(updatedFields).length === 0 && imageFiles.length === 0) {
+            showToast('No changes detected', 'info');
+            setModal(false);
+            setLoading(false);
+            return;
+          }
+          
+          const response = await sellerApi.editOffer(offerId, updatedFields, imageFiles);
+          
+          if (response.success) {
+            showToast('Offer updated successfully!', 'success');
+            await fetchAllData();
+            setModal(false);
+            cleanupPreviews();
+          } else {
+            showToast(response.message || 'Failed to update offer', 'error');
+          }
         }
       } else {
         if (!imageFiles || imageFiles.length === 0) {
-          showToast('Please upload at least one offer image', 'error');
+          showToast(`Please upload at least one ${isFlashDeal ? 'flash deal' : 'offer'} image`, 'error');
+          setLoading(false);
           return;
         }
+        
+        if (isFlashDeal) {
+          const flashDealData = {
+            flashDealTitle: form.flashDealTitle.trim(),
+            flashDealDescription: form.flashDealDescription.trim(),
+            flashDealStartTime: form.flashDealStartTime,
+            flashDealEndTime: form.flashDealEndTime,
+            flashDealTermsAndConditions: form.flashDealTermsAndConditions?.trim() || '',
+            flashDealType: form.flashDealType,
+            flashDealValue: Number(form.flashDealValue),
+            timezone: form.timezone,
+          };
+          
+          console.log('Creating flash deal with data:', flashDealData);
+          
+          const response = await sellerApi.createFlashDeal(flashDealData, imageFiles);
+          
+          if (response.success) {
+            showToast('Flash deal created successfully!', 'success');
+            await fetchAllData();
+            setModal(false);
+            cleanupPreviews();
+          } else {
+            showToast(response.message || 'Failed to create flash deal', 'error');
+          }
+        } else {
+          const shopId = await getShopId();
+          if (!shopId) {
+            showToast('Shop ID not found. Please refresh or login again.', 'error');
+            setLoading(false);
+            return;
+          }
 
-        const response = await sellerApi.createOffer(offerData, imageFiles);
-        if (response.success) {
-          showToast('Offer created successfully!');
-          await fetchAllOffers();
-          setModal(false);
-          cleanupPreviews();
+          const offerData = {
+            shopId,
+            offerTitle: form.offerTitle.trim(),
+            offerDescription: form.offerDescription.trim(),
+            offerStartDate: form.offerStartDate,
+            offerEndDate: form.offerEndDate,
+            offerTermsAndConditions: form.offerTermsAndConditions?.trim() || '',
+            offerType: form.offerType,
+            offerValue: Number(form.offerValue),
+          };
+          
+          const response = await sellerApi.createOffer(offerData, imageFiles);
+          
+          if (response.success) {
+            showToast('Offer created successfully!', 'success');
+            await fetchAllData();
+            setModal(false);
+            cleanupPreviews();
+          } else {
+            showToast(response.message || 'Failed to create offer', 'error');
+          }
         }
       }
     } catch (error) {
-      console.error('Failed to save offer:', error);
-      showToast(error.message || 'Failed to save offer', 'error');
+      console.error('Failed to save:', error);
+      showToast(error.message || 'Failed to save', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // ─── Delete Offer ─────────────────────────────
-  const deleteOffer = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this offer?')) return;
+  // ─── Delete Offer / Flash Deal ────────────────
+  const deleteOffer = async (id, isFlashDeal = false) => {
+    const itemType = isFlashDeal ? 'flash deal' : 'offer';
+    if (!window.confirm(`Are you sure you want to delete this ${itemType}?`)) return;
+    
     try {
-      const response = await sellerApi.deleteOffer(id);
+      let response;
+      if (isFlashDeal) {
+        response = await sellerApi.deleteFlashDeal(id);
+      } else {
+        response = await sellerApi.deleteOffer(id);
+      }
+      
       if (response.success) {
-        // Remove from local state immediately — no refetch needed
-        setAllOffers(prev => prev.filter(o => o.offerId !== id && o._id !== id));
-        setStats(prev => ({
-          ...prev,
-          all: prev.all - 1
-        }));
-        showToast('Offer removed successfully');
+        showToast(`${itemType.charAt(0).toUpperCase() + itemType.slice(1)} removed successfully`);
+        await fetchAllData();
+      } else {
+        showToast(response.message || `Failed to delete ${itemType}`, 'error');
       }
     } catch (error) {
-      console.error('Failed to delete offer:', error);
-      showToast('Failed to delete offer', 'error');
+      console.error(`Failed to delete ${itemType}:`, error);
+      showToast(`Failed to delete ${itemType}`, 'error');
     }
   };
 
   // ─── Toggle Offer Status ──────────────────────
   const toggleOfferStatus = async (offer) => {
+    if (offer.isFlashDeal) {
+      showToast('Flash deals cannot be disabled manually', 'info');
+      return;
+    }
+    
     try {
       if (offer.isEnabled) {
         const response = await sellerApi.disableOffer(offer.offerId || offer._id);
         if (response.success) {
           showToast('Offer disabled successfully');
-          await fetchAllOffers();
+          await fetchAllData();
         }
       } else {
         const startDate = prompt(
@@ -380,7 +718,7 @@ export default function StallOwnerDashboard() {
         );
         if (response.success) {
           showToast('Offer enabled successfully');
-          await fetchAllOffers();
+          await fetchAllData();
         }
       }
     } catch (error) {
@@ -392,11 +730,22 @@ export default function StallOwnerDashboard() {
   // ─── View Offer Details ───────────────────────
   const viewOfferDetails = async (offer) => {
     try {
-      const response = await sellerApi.getSingleOffer(offer.offerId || offer._id);
-      if (response.success) setSelectedOffer(response.data);
+      let response;
+      if (offer.isFlashDeal) {
+        response = await sellerApi.getSingleFlashDeal(offer._id);
+      } else {
+        response = await sellerApi.getSingleOffer(offer.offerId || offer._id);
+      }
+      
+      if (response.success) {
+        setSelectedOffer({
+          ...response.data,
+          isFlashDeal: offer.isFlashDeal
+        });
+      }
     } catch (error) {
-      console.error('Failed to fetch offer details:', error);
-      showToast('Failed to load offer details', 'error');
+      console.error('Failed to fetch details:', error);
+      showToast('Failed to load details', 'error');
     }
   };
 
@@ -451,13 +800,15 @@ export default function StallOwnerDashboard() {
                 search={search}
                 onSearchChange={setSearch}
                 stats={stats}
+                dealType={dealType}
+                onDealTypeChange={setDealType}
               />
 
               <button
                 onClick={openCreate}
                 className="flex items-center gap-2 px-4 py-2.5 bg-stone-900 hover:bg-stone-800 text-white text-sm font-medium rounded-xl transition-all hover:-translate-y-0.5 hover:shadow-lg shadow-stone-900/20"
               >
-                <Plus className="w-4 h-4" /> Create New Offer
+                <Plus className="w-4 h-4" /> Create New Promotion
               </button>
             </div>
 
@@ -473,7 +824,10 @@ export default function StallOwnerDashboard() {
                 onView={viewOfferDetails}
                 onToggle={toggleOfferStatus}
                 onEdit={openEdit}
-                onDelete={deleteOffer}
+                onDelete={(id) => {
+                  const item = paged.find(o => (o.offerId || o._id) === id);
+                  deleteOffer(id, item?.isFlashDeal);
+                }}
               />
             )}
 
@@ -483,7 +837,10 @@ export default function StallOwnerDashboard() {
                 onView={viewOfferDetails}
                 onToggle={toggleOfferStatus}
                 onEdit={openEdit}
-                onDelete={deleteOffer}
+                onDelete={(id) => {
+                  const item = paged.find(o => (o.offerId || o._id) === id);
+                  deleteOffer(id, item?.isFlashDeal);
+                }}
               />
             )}
 
@@ -492,7 +849,7 @@ export default function StallOwnerDashboard() {
                 currentPage={page}
                 totalPages={totalPages}
                 onPageChange={setPage}
-                totalItems={filtered.length}
+                totalItems={combinedItems.length}
                 pageSize={ITEMS_PER_PAGE}
               />
             )}
@@ -506,15 +863,23 @@ export default function StallOwnerDashboard() {
         offer={selectedOffer}
         onClose={() => setSelectedOffer(null)}
         onEdit={openEdit}
-        onDelete={deleteOffer}
+        onDelete={(id) => {
+          deleteOffer(id, selectedOffer?.isFlashDeal);
+          setSelectedOffer(null);
+        }}
       />
 
       <CreateEditOfferModal
         isOpen={modal}
-        onClose={() => setModal(false)}
+        onClose={() => {
+          setModal(false);
+          imagePreviews.forEach(p => { if (p.startsWith('blob:')) URL.revokeObjectURL(p); });
+          setImageFiles([]);
+          setImagePreviews([]);
+        }}
         form={form}
         setForm={setForm}
-        editing={editing}
+        editing={!!editing}
         imageFiles={imageFiles}
         imagePreviews={imagePreviews}
         onImageChange={handleImageChange}

@@ -7,14 +7,13 @@ let failedQueue = [];
 
 // ────────────────────────────────────────────────
 // QUEUE MANAGEMENT
-// Fixed: queue stores resolve/reject AND retries the actual fetch after refresh
 // ────────────────────────────────────────────────
 const processQueue = (error = null) => {
   failedQueue.forEach(({ resolve, reject }) => {
     if (error) {
       reject(error);
     } else {
-      resolve(); // signals "refresh done, you may retry"
+      resolve();
     }
   });
   failedQueue = [];
@@ -65,10 +64,6 @@ const handleApiError = (error, context = '') => {
 
 // ────────────────────────────────────────────────
 // CORE: authenticatedFetch
-// Key fixes:
-//   1. refreshToken() is called once; concurrent 401s queue and wait
-//   2. After refresh, every queued request retries fetch() fresh (new cookies)
-//   3. Response body is never consumed twice
 // ────────────────────────────────────────────────
 const authenticatedFetch = async (url, options = {}) => {
   const buildOptions = (opts) => {
@@ -78,7 +73,6 @@ const authenticatedFetch = async (url, options = {}) => {
       headers: { ...(opts.headers || {}) },
     };
     if (opts.body instanceof FormData) {
-      // Let the browser set multipart boundary automatically
       delete built.headers['Content-Type'];
     } else if (!built.headers['Content-Type']) {
       built.headers['Content-Type'] = 'application/json';
@@ -88,7 +82,7 @@ const authenticatedFetch = async (url, options = {}) => {
 
   const defaultOptions = buildOptions(options);
 
-  // ── First attempt ──
+  // First attempt
   let response;
   try {
     response = await fetch(url, defaultOptions);
@@ -96,17 +90,15 @@ const authenticatedFetch = async (url, options = {}) => {
     throw { status: 0, message: 'Network error. Please check your connection.' };
   }
 
-  // ── Handle 401 ──
+  // Handle 401
   if (response.status === 401) {
     console.log(`[Auth] 401 on ${url}`);
 
     if (isRefreshing) {
-      // Another refresh is already running — queue this request
       console.log('[Auth] Refresh in progress, queuing...');
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       }).then(() => {
-        // Refresh succeeded — retry with fresh cookies
         console.log('[Auth] Retrying queued request:', url);
         return fetch(url, defaultOptions).then(async (retryRes) => {
           if (!retryRes.ok) {
@@ -121,22 +113,17 @@ const authenticatedFetch = async (url, options = {}) => {
       });
     }
 
-    // ── This request triggers the refresh ──
     isRefreshing = true;
     console.log('[Auth] Starting token refresh...');
 
     try {
-      await sellerApi.refreshToken(); // throws on failure
+      await sellerApi.refreshToken();
       console.log('[Auth] Refresh succeeded');
-
-      // Unblock all queued requests
       processQueue();
 
-      // Retry the current request
       const retryResponse = await fetch(url, defaultOptions);
 
       if (retryResponse.status === 401) {
-        // Refresh token itself has expired → force logout
         sellerApi.clearAuthData();
         throw { status: 401, message: 'Session expired. Please login again.' };
       }
@@ -153,7 +140,7 @@ const authenticatedFetch = async (url, options = {}) => {
 
     } catch (refreshError) {
       console.error('[Auth] Refresh failed:', refreshError);
-      processQueue(refreshError); // unblock queue with error
+      processQueue(refreshError);
       sellerApi.clearAuthData();
       throw { status: 401, message: 'Session expired. Please login again.' };
 
@@ -162,7 +149,7 @@ const authenticatedFetch = async (url, options = {}) => {
     }
   }
 
-  // ── Handle 403 ──
+  // Handle 403
   if (response.status === 403) {
     let errorData = {};
     try {
@@ -191,7 +178,7 @@ const authenticatedFetch = async (url, options = {}) => {
     };
   }
 
-  // ── Handle other non-OK responses ──
+  // Handle other non-OK responses
   if (!response.ok) {
     let errorMessage;
     try {
@@ -248,8 +235,6 @@ const storeAuthData = (data) => {
       localStorage.setItem('vendorApprovalStatus', data.seller.vendorApprovalStatus);
     }
   }
-
-  // Store tokens if returned in body (some backends do this)
   if (data.accessTokenValue) localStorage.setItem('accessToken', data.accessTokenValue);
   if (data.refreshTokenValue) localStorage.setItem('refreshToken', data.refreshTokenValue);
 };
@@ -546,8 +531,6 @@ export const sellerApi = {
     }
   },
 
-  // ── Token Refresh ──
-  // Fixed: no double .json() consumption; returns true on success, throws on failure
   refreshToken: async () => {
     try {
       console.log('[Token Refresh] Attempting...');
@@ -562,7 +545,6 @@ export const sellerApi = {
       });
 
       if (!res.ok) {
-        // Consume body once
         let errorMessage = 'Refresh token failed';
         try {
           const ct = res.headers.get('content-type');
@@ -580,7 +562,6 @@ export const sellerApi = {
 
       console.log('[Token Refresh] Success');
 
-      // Optionally store tokens if backend returns them in body
       try {
         const ct = res.headers.get('content-type');
         if (ct && ct.includes('application/json')) {
@@ -598,8 +579,6 @@ export const sellerApi = {
       throw { status: 401, message: 'Session expired. Please login again.' };
     }
   },
-
-  // ── Protected Endpoints ──
 
   getSellerStallProfile: async () => {
     try {
@@ -623,12 +602,15 @@ export const sellerApi = {
         data.data?.vendorApprovalStatus ||
         data.seller?.vendorApprovalStatus;
       if (approvalStatus) localStorage.setItem('vendorApprovalStatus', approvalStatus);
-
       return data;
     } catch (error) {
       return handleApiError(error, 'fetching profile');
     }
   },
+
+  // ── Regular Offers ──────────────────────────────────────────────────────────
+  // (Keep all existing offer methods unchanged)
+  // ... offer methods ...
 
   createOffer: async (offerData, offerImages) => {
     try {
@@ -805,27 +787,435 @@ export const sellerApi = {
     }
   },
 
-  // ── Utilities ──
+  // ────────────────────────────────────────────────────────────────────────────
+  // FLASH DEALS API - COMPLETE IMPLEMENTATION
+  // ────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Create a new flash deal
+   * POST /api/seller/create-flash-deal
+   */
+  createFlashDeal: async (flashDealData, flashDealImages = []) => {
+    try {
+      const requiredFields = [
+        'flashDealTitle',
+        'flashDealStartTime',
+        'flashDealEndTime',
+        'flashDealType',
+        'flashDealValue',
+        'timezone'
+      ];
+      
+      const missingFields = requiredFields.filter(field => {
+        const value = flashDealData[field];
+        return value === undefined || value === null || value === '';
+      });
+      
+      if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      if (flashDealData.flashDealType === 'percentage') {
+        const value = Number(flashDealData.flashDealValue);
+        if (value < 0 || value > 100) {
+          throw new Error('Percentage discount must be between 0 and 100');
+        }
+      } else {
+        const value = Number(flashDealData.flashDealValue);
+        if (value < 0) {
+          throw new Error('Discount value cannot be negative');
+        }
+      }
+
+      if (flashDealImages.length > 3) {
+        throw new Error('Maximum 3 images allowed for flash deals');
+      }
+
+      const formData = new FormData();
+
+      formData.append('flashDealTitle', String(flashDealData.flashDealTitle || '').trim());
+      formData.append('flashDealDescription', String(flashDealData.flashDealDescription || '').trim());
+      formData.append('flashDealStartTime', String(flashDealData.flashDealStartTime || ''));
+      formData.append('flashDealEndTime', String(flashDealData.flashDealEndTime || ''));
+      formData.append('flashDealType', String(flashDealData.flashDealType || 'percentage'));
+      formData.append('flashDealValue', String(flashDealData.flashDealValue || 0));
+      formData.append('flashDealTermsAndConditions', String(flashDealData.flashDealTermsAndConditions || '').trim());
+      formData.append('timezone', flashDealData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+      flashDealImages.forEach((img) => formData.append('flashDealImages', img));
+
+      const res = await authenticatedFetch(`${SELLER_URL}/create-flash-deal`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to create flash deal');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Create flash deal error:', error);
+      return handleApiError(error, 'creating flash deal');
+    }
+  },
+
+  /**
+   * Get all active flash deals
+   * GET /api/seller/get-active-flash-deals
+   */
+  getActiveFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-active-flash-deals`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch active flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get active flash deals error:', error);
+      return handleApiError(error, 'fetching active flash deals');
+    }
+  },
+
+  /**
+   * Get all expired flash deals
+   * GET /api/seller/get-expired-flash-deals
+   */
+  getExpiredFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-expired-flash-deals`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch expired flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get expired flash deals error:', error);
+      return handleApiError(error, 'fetching expired flash deals');
+    }
+  },
+
+  /**
+   * Get all flash deals for the authenticated seller
+   * GET /api/seller/get-seller-flash-deals
+   */
+  getSellerFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-seller-flash-deals`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch seller flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get seller flash deals error:', error);
+      return handleApiError(error, 'fetching seller flash deals');
+    }
+  },
+
+  /**
+   * Get active flash deals for the authenticated seller
+   * GET /api/seller/get-seller-flash-deal-active
+   */
+  getSellerActiveFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-seller-flash-deal-active`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch seller active flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get seller active flash deals error:', error);
+      return handleApiError(error, 'fetching seller active flash deals');
+    }
+  },
+
+  /**
+   * Get expired flash deals for the authenticated seller
+   * GET /api/seller/get-seller-flash-deal-expired
+   */
+  getSellerExpiredFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-seller-flash-deal-expired`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch seller expired flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get seller expired flash deals error:', error);
+      return handleApiError(error, 'fetching seller expired flash deals');
+    }
+  },
+
+  /**
+   * Get scheduled flash deals for the authenticated seller
+   * GET /api/seller/get-seller-flash-deal-scheduled
+   */
+  getSellerScheduledFlashDeals: async () => {
+    try {
+      const res = await authenticatedFetch(`${SELLER_URL}/get-seller-flash-deal-scheduled`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch seller scheduled flash deals');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get seller scheduled flash deals error:', error);
+      return handleApiError(error, 'fetching seller scheduled flash deals');
+    }
+  },
+
+  /**
+   * Get a single flash deal by ID
+   * GET /api/seller/get-single-flash-deal/:flashDealId
+   */
+  getSingleFlashDeal: async (flashDealId) => {
+    try {
+      if (!flashDealId) {
+        throw new Error('Flash deal ID is required');
+      }
+      
+      const res = await authenticatedFetch(`${SELLER_URL}/get-single-flash-deal/${flashDealId}`);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to fetch flash deal details');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Get single flash deal error:', error);
+      return handleApiError(error, 'fetching flash deal details');
+    }
+  },
+
+  /**
+   * Edit an existing flash deal
+   * PUT /api/seller/edit-flash-deal/:flashDealId
+   */
+  editFlashDeal: async (flashDealId, flashDealData, flashDealImages = []) => {
+    try {
+      if (!flashDealId) {
+        throw new Error('Flash deal ID is required');
+      }
+
+      // Validate flash deal value if provided
+      if (flashDealData.flashDealValue !== undefined) {
+        const dealType = flashDealData.flashDealType || 'percentage';
+        if (dealType === 'percentage') {
+          const value = Number(flashDealData.flashDealValue);
+          if (value < 0 || value > 100) {
+            throw new Error('Percentage discount must be between 0 and 100');
+          }
+        } else {
+          const value = Number(flashDealData.flashDealValue);
+          if (value < 0) {
+            throw new Error('Discount value cannot be negative');
+          }
+        }
+      }
+
+      // Validate date logic if both dates are provided
+      if (flashDealData.flashDealStartTime && flashDealData.flashDealEndTime) {
+        const start = new Date(flashDealData.flashDealStartTime);
+        const end = new Date(flashDealData.flashDealEndTime);
+        if (end <= start) {
+          throw new Error('End time must be greater than start time');
+        }
+      }
+
+      const hasNewImages = flashDealImages && flashDealImages.length > 0;
+
+      if (hasNewImages) {
+        if (flashDealImages.length > 3) {
+          throw new Error('Maximum 3 images allowed for flash deals');
+        }
+
+        const formData = new FormData();
+        
+        // Append all fields that are not undefined or null
+        Object.entries(flashDealData).forEach(([key, val]) => {
+          if (val !== undefined && val !== null) {
+            const value = key === 'flashDealValue' ? String(val) : val;
+            formData.append(key, value);
+          }
+        });
+        
+        // Append new images with correct field name (flashDealBanners for edit)
+        flashDealImages.forEach((img) => formData.append('flashDealBanners', img));
+
+        const res = await authenticatedFetch(`${SELLER_URL}/edit-flash-deal/${flashDealId}`, {
+          method: 'PUT',
+          body: formData,
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to edit flash deal');
+        }
+        
+        return data;
+      } else {
+        // Clean data - remove undefined and null values
+        const cleanData = Object.fromEntries(
+          Object.entries(flashDealData).filter(([, v]) => v !== undefined && v !== null)
+        );
+        
+        const res = await authenticatedFetch(`${SELLER_URL}/edit-flash-deal/${flashDealId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cleanData),
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to edit flash deal');
+        }
+        
+        return data;
+      }
+    } catch (error) {
+      console.error('Edit flash deal error:', error);
+      
+      // Handle specific error cases
+      if (error.message?.includes('overlap')) {
+        throw new Error('Another deal overlaps this time period');
+      }
+      if (error.message?.includes('end time must be greater')) {
+        throw new Error('End time must be greater than start time');
+      }
+      
+      return handleApiError(error, 'editing flash deal');
+    }
+  },
+
+  /**
+   * Delete a flash deal
+   * DELETE /api/seller/delete-flash-deal/:flashDealId
+   */
+  deleteFlashDeal: async (flashDealId) => {
+    try {
+      if (!flashDealId) {
+        throw new Error('Flash deal ID is required');
+      }
+      
+      const res = await authenticatedFetch(`${SELLER_URL}/delete-flash-deal/${flashDealId}`, {
+        method: 'DELETE',
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to delete flash deal');
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Delete flash deal error:', error);
+      return handleApiError(error, 'deleting flash deal');
+    }
+  },
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // UTILITY FUNCTIONS
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Validate offer/flash deal dates
+   */
   validateOfferDates: (startDate, endDate) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    
     const start = new Date(startDate);
     const end = new Date(endDate);
-    if (start < today) throw new Error('Start date cannot be in the past');
-    if (end <= start) throw new Error('End date must be after start date');
+    
+    if (isNaN(start.getTime())) {
+      throw new Error('Invalid start date');
+    }
+    
+    if (isNaN(end.getTime())) {
+      throw new Error('Invalid end date');
+    }
+    
+    if (start < today) {
+      throw new Error('Start date cannot be in the past');
+    }
+    
+    if (end <= start) {
+      throw new Error('End date must be after start date');
+    }
+    
     return true;
   },
 
-  formatOfferData: (offer) => ({
-    ...offer,
-    formattedStartDate: new Date(offer.offerStartDate).toLocaleDateString(),
-    formattedEndDate: new Date(offer.offerEndDate).toLocaleDateString(),
-    isActive: offer.offerStatus === 'active' && offer.isEnabled,
-    isScheduled: offer.offerStatus === 'scheduled' && offer.isEnabled,
-    isExpired: offer.offerStatus === 'expired',
-    isDisabled: !offer.isEnabled,
-  }),
+  /**
+   * Format offer data for display
+   */
+  formatOfferData: (offer) => {
+    if (!offer) return null;
+    
+    return {
+      ...offer,
+      formattedStartDate: offer.offerStartDate 
+        ? new Date(offer.offerStartDate).toLocaleDateString() 
+        : 'N/A',
+      formattedEndDate: offer.offerEndDate 
+        ? new Date(offer.offerEndDate).toLocaleDateString() 
+        : 'N/A',
+      isActive: offer.offerStatus === 'active' && offer.isEnabled,
+      isScheduled: offer.offerStatus === 'scheduled' && offer.isEnabled,
+      isExpired: offer.offerStatus === 'expired',
+      isDisabled: !offer.isEnabled,
+    };
+  },
+
+  /**
+   * Format flash deal data for display
+   */
+  formatFlashDealData: (deal) => {
+    if (!deal) return null;
+    
+    const startTime = deal.flashDealStartTime || deal.startTime;
+    const endTime = deal.flashDealEndTime || deal.endTime;
+    
+    return {
+      ...deal,
+      formattedStartTime: startTime 
+        ? new Date(startTime).toLocaleString() 
+        : 'N/A',
+      formattedEndTime: endTime 
+        ? new Date(endTime).toLocaleString() 
+        : 'N/A',
+      isActive: deal.status === 'active',
+      isScheduled: deal.status === 'scheduled',
+      isExpired: deal.status === 'expired',
+      discountDisplay: deal.dealType === 'percentage' 
+        ? `${deal.dealValue}% OFF` 
+        : `₹${deal.dealValue} OFF`,
+      bannerUrls: deal.banners?.map(b => b.url) || [],
+    };
+  },
+
 };
 
 export default sellerApi;

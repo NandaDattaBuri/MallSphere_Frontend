@@ -12,7 +12,6 @@ const VendorForgotPassword = () => {
   const [step, setStep] = useState(1); // 1: Request OTP, 2: Reset Password
   const [formData, setFormData] = useState({
     email: location.state?.email || '',
-    vendorLicenseNumber: '',
     otp: '',
     newPassword: '',
     confirmPassword: ''
