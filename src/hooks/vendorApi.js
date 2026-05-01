@@ -1,6 +1,6 @@
 // hooks/vendorApi.js 
 
-const API_BASE_URL = 'https://mallsperebackend-psbx.onrender.com/api';
+const API_BASE_URL = 'https://mallsperebackend-uh9h.onrender.com/api';
 const AUTH_URL = `${API_BASE_URL}/auth`;
 
 
@@ -458,6 +458,112 @@ export const vendorApi = {
 
   getMallActiveOffers: () =>
     apiFetch(`${AUTH_URL}/get-mall-active-offers`, { method: 'GET' }),
+
+  // ── NEW OFFER MANAGEMENT METHODS ──
+  
+  getVendorOffers: async () => {
+    return apiFetch(`${AUTH_URL}/get-vendor-offers`, { method: 'GET' });
+  },
+
+  getSingleOffer: async (offerId) => {
+    if (!offerId) throw new Error('Offer ID is required');
+    return apiFetch(`${AUTH_URL}/get-single-offer/${offerId}`, { method: 'GET' });
+  },
+
+  createOffer: async (offerData, offerImages = []) => {
+    try {
+      const formData = new FormData();
+      
+      // Append all offer data
+      Object.keys(offerData).forEach((key) => {
+        const value = offerData[key];
+        if (value !== undefined && value !== null && value !== '') {
+          if (key === 'offerValue' || key === 'offerType') {
+            formData.append(key, value);
+          } else if (key === 'offerStartDate' || key === 'offerEndDate') {
+            formData.append(key, new Date(value).toISOString());
+          } else {
+            formData.append(key, value);
+          }
+        }
+      });
+      
+      // Append images if any
+      if (offerImages?.length > 0) {
+        offerImages.forEach((img) => {
+          if (img) formData.append('offerImages', img);
+        });
+      }
+      
+      return await apiFetch(`${API_BASE_URL}/seller/create-offer`, { 
+        method: 'POST', 
+        body: formData 
+      });
+    } catch (error) {
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error('Network error. Please check your connection.');
+      }
+      throw error;
+    }
+  },
+
+  editOffer: async (offerId, offerData, offerImages = []) => {
+    if (!offerId) throw new Error('Offer ID is required');
+    
+    const formData = new FormData();
+    
+    // Append all offer data
+    Object.keys(offerData).forEach((key) => {
+      const value = offerData[key];
+      if (value !== undefined && value !== null && value !== '') {
+        if (key === 'offerValue' || key === 'offerType') {
+          formData.append(key, value);
+        } else if (key === 'offerStartDate' || key === 'offerEndDate') {
+          formData.append(key, new Date(value).toISOString());
+        } else {
+          formData.append(key, value);
+        }
+      }
+    });
+    
+    // Append new images if any
+    if (offerImages?.length > 0) {
+      offerImages.forEach((img) => {
+        if (img) formData.append('offerImages', img);
+      });
+    }
+    
+    return apiFetch(`${API_BASE_URL}/seller/edit-offer/${offerId}`, { 
+      method: 'PUT', 
+      body: formData 
+    });
+  },
+
+  deleteOffer: async (offerId) => {
+    if (!offerId) throw new Error('Offer ID is required');
+    
+    const response = await apiFetch(`${API_BASE_URL}/seller/delete-offer/${offerId}`, { 
+      method: 'DELETE' 
+    });
+    
+    // Check if response indicates success
+    if (response?.success === true) {
+      return { success: true, message: 'Offer deleted successfully' };
+    }
+    
+    // If there's an error message, throw it
+    if (response?.message) {
+      throw new Error(response.message);
+    }
+    
+    // If response status indicates failure (check for error codes)
+    if (response?.status === 403 || response?.status === 401) {
+      throw new Error(response.message || 'Access denied');
+    }
+    
+    // Default error
+    throw new Error(response?.message || 'Failed to delete offer');
+  },
 
   // ── Event Management ──
 

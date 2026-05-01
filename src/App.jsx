@@ -11,7 +11,7 @@ import VendorRegister from './pages/vendor/VendorRegister';
 import VendorOTPVerificationPage from './pages/vendor/VendorOTPVerificationPage';
 import VendorForgotPassword from './pages/vendor/VendorForgotPassword';
 import VendorDashboard from './pages/vendor/VendorDashboard';
-import VendorProfile from './pages/vendor/VendorProfile'
+import VendorProfile from './pages/vendor/VendorProfile';
 
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import AuthModal from './components/superadmin/AuthModal';

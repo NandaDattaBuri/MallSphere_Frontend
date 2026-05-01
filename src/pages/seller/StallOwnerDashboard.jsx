@@ -309,7 +309,6 @@ export default function StallOwnerDashboard() {
   const totalPages = Math.max(1, Math.ceil(combinedItems.length / ITEMS_PER_PAGE));
   const paged = combinedItems.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  // ─── Open Create Modal ────────────────────────
   const openCreate = async () => {
     try {
       const shopId = await getShopId();
@@ -336,7 +335,7 @@ export default function StallOwnerDashboard() {
         flashDealStartTime: "",
         flashDealEndTime: "",
         flashDealTermsAndConditions: "",
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timezone: "Asia/Dubai", // Set default to Dubai
         offerCategory: "regular"
       });
       setImageFiles([]);
@@ -347,7 +346,6 @@ export default function StallOwnerDashboard() {
       showToast('Error preparing offer creation', 'error');
     }
   };
-
   // ─── Open Edit Modal ──────────────────────────
   const openEdit = async (offer) => {
     try {
@@ -450,19 +448,19 @@ export default function StallOwnerDashboard() {
         
         const startTime = new Date(form.flashDealStartTime);
         const endTime = new Date(form.flashDealEndTime);
-        const now = new Date();
         
-        if (startTime < now) {
-          showToast('Flash deal start time cannot be in the past', 'error');
-          setLoading(false);
-          return;
-        }
+        // ✅ REMOVED: Past time validation - Backend handles this correctly
+        // The old code was: if (startTime < now) { showToast('Flash deal start time cannot be in the past', 'error'); return; }
+        // This was causing the error because it compares Dubai time with India browser time
+        
+        // ✅ Keep end time validation
         if (endTime <= startTime) {
           showToast('Flash deal end time must be after start time', 'error');
           setLoading(false);
           return;
         }
         
+        // ✅ Keep duration validation
         const durationHours = (endTime - startTime) / (1000 * 60 * 60);
         if (durationHours > 48) {
           showToast('Flash deal duration cannot exceed 48 hours', 'error');
@@ -475,6 +473,7 @@ export default function StallOwnerDashboard() {
           return;
         }
         
+        // ✅ Keep percentage validation
         if (form.flashDealType === 'percentage') {
           const value = Number(form.flashDealValue);
           if (value <= 0 || value > 100) {
@@ -484,6 +483,7 @@ export default function StallOwnerDashboard() {
           }
         }
       } else {
+        // Regular offer validation (keep as is)
         if (!form.offerTitle?.trim()) {
           showToast('Offer title is required', 'error');
           setLoading(false);
@@ -728,24 +728,70 @@ export default function StallOwnerDashboard() {
   };
 
   // ─── View Offer Details ───────────────────────
-  const viewOfferDetails = async (offer) => {
+  const viewOfferDetails = async (offerOrId) => {
     try {
-      let response;
-      if (offer.isFlashDeal) {
-        response = await sellerApi.getSingleFlashDeal(offer._id);
-      } else {
-        response = await sellerApi.getSingleOffer(offer.offerId || offer._id);
+      // Check auth state first
+      const isAuth = sellerApi.isAuthenticated();
+      const sellerId = localStorage.getItem('sellerId');
+      console.log('Auth state - isAuthenticated:', isAuth, 'sellerId:', sellerId);
+      
+      if (!isAuth || !sellerId) {
+        showToast('Please login again', 'error');
+        navigate('/stall-owner/login');
+        return;
       }
+      
+      let id;
+      let isFlashDeal = false;
+      
+      if (typeof offerOrId === 'string') {
+        id = offerOrId;
+        const foundItem = combinedItems.find(item => 
+          (item._id === id) || (item.offerId === id)
+        );
+        isFlashDeal = foundItem?.isFlashDeal || !!foundItem?.flashDealTitle;
+      } else {
+        id = offerOrId._id || offerOrId.offerId;
+        isFlashDeal = offerOrId.isFlashDeal || !!offerOrId.flashDealTitle;
+      }
+      
+      if (!id) {
+        console.error('No valid ID found');
+        showToast('Invalid offer ID', 'error');
+        return;
+      }
+      
+      console.log('Fetching details for ID:', id, 'isFlashDeal:', isFlashDeal);
+      
+      let response;
+      if (isFlashDeal) {
+        response = await sellerApi.getSingleFlashDeal(id);
+      } else {
+        response = await sellerApi.getSingleOffer(id);
+      }
+      
+      console.log('API Response:', response);
       
       if (response.success) {
         setSelectedOffer({
           ...response.data,
-          isFlashDeal: offer.isFlashDeal
+          isFlashDeal: isFlashDeal
         });
+      } else {
+        showToast(response.message || 'Failed to load details', 'error');
       }
     } catch (error) {
       console.error('Failed to fetch details:', error);
-      showToast('Failed to load details', 'error');
+      if (error.status === 401) {
+        showToast('Session expired. Please login again.', 'error');
+        navigate('/stall-owner/login');
+      } else if (error.status === 404) {
+        showToast('Offer not found. It may have been deleted.', 'error');
+        // Refresh the list to remove stale data
+        await fetchAllData();
+      } else {
+        showToast('Failed to load details', 'error');
+      }
     }
   };
 

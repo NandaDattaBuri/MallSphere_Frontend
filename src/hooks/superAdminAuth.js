@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://mallsperebackend-psbx.onrender.com/api/super-admin';
+const API_BASE_URL = 'https://mallsperebackend-uh9h.onrender.com/api/super-admin';
 
 // ==================== TOKEN REFRESH MANAGEMENT ====================
 

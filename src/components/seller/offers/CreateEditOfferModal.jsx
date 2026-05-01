@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Zap, Calendar } from 'lucide-react';
+import { X, Zap } from 'lucide-react';
 
 const inputCls = "w-full px-3.5 py-2.5 border border-stone-200 rounded-xl text-sm text-stone-800 outline-none focus:border-stone-500 focus:ring-2 focus:ring-stone-100 transition-all bg-white";
 
@@ -15,35 +15,123 @@ const CreateEditOfferModal = ({
   onSubmit,
   loading
 }) => {
-  // FIX: Determine initial offer type based on editing data
   const getInitialOfferType = () => {
     if (editing) {
-      // Check if it's a flash deal by looking for flash-specific fields
-      const isFlashDeal = form.isFlashDeal || 
-                         !!form.flashDealTitle || 
-                         form.offerCategory === 'flash' ||
-                         !!form.flashDealStartTime ||
-                         !!form.status; // flash deals have status instead of offerStatus
-      
+      const isFlashDeal = form.isFlashDeal ||
+        !!form.flashDealTitle ||
+        form.offerCategory === 'flash' ||
+        !!form.flashDealStartTime ||
+        !!form.status;
       return isFlashDeal ? 'flash' : 'regular';
     }
     return form.offerCategory || 'regular';
   };
 
   const [offerType, setOfferType] = useState(getInitialOfferType());
+  const [selectedTimezone, setSelectedTimezone] = useState(form.timezone || 'Asia/Dubai');
 
-  // FIX: Update offerType when editing prop changes
   useEffect(() => {
     if (editing) {
-      const isFlashDeal = form.isFlashDeal || 
-                         !!form.flashDealTitle || 
-                         form.offerCategory === 'flash' ||
-                         !!form.flashDealStartTime ||
-                         !!form.status;
-      
+      const isFlashDeal = form.isFlashDeal ||
+        !!form.flashDealTitle ||
+        form.offerCategory === 'flash' ||
+        !!form.flashDealStartTime ||
+        !!form.status;
       setOfferType(isFlashDeal ? 'flash' : 'regular');
     }
   }, [editing, form]);
+
+  // ✅ Convert a date from one timezone to datetime-local format in another timezone
+  const convertToTimezoneDateTimeLocal = (dateString, targetTimezone) => {
+    if (!dateString) return '';
+    
+    try {
+      // Parse the date (assuming it might be in different formats)
+      let date;
+      if (dateString.includes('T')) {
+        date = new Date(dateString);
+      } else {
+        date = new Date(dateString);
+      }
+      
+      if (isNaN(date.getTime())) return '';
+      
+      // Format the date in the target timezone
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: targetTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      
+      const parts = formatter.formatToParts(date);
+      const year = parts.find(p => p.type === 'year')?.value;
+      const month = parts.find(p => p.type === 'month')?.value;
+      const day = parts.find(p => p.type === 'day')?.value;
+      const hour = parts.find(p => p.type === 'hour')?.value;
+      const minute = parts.find(p => p.type === 'minute')?.value;
+      
+      if (year && month && day && hour && minute) {
+        return `${year}-${month}-${day}T${hour}:${minute}`;
+      }
+      return '';
+    } catch (error) {
+      console.error('Timezone conversion error:', error);
+      return '';
+    }
+  };
+
+  // ✅ Get current time in the selected timezone for placeholder
+  const getCurrentTimeInTimezone = (timezone) => {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const year = parts.find(p => p.type === 'year')?.value;
+    const month = parts.find(p => p.type === 'month')?.value;
+    const day = parts.find(p => p.type === 'day')?.value;
+    const hour = parts.find(p => p.type === 'hour')?.value;
+    const minute = parts.find(p => p.type === 'minute')?.value;
+    
+    if (year && month && day && hour && minute) {
+      return `${year}-${month}-${day}T${hour}:${minute}`;
+    }
+    return '';
+  };
+
+  const formatForDateTimeLocal = (dateString) => {
+    if (!dateString) return '';
+    // Just return the string as-is, assuming it's already in correct format
+    return dateString;
+  };
+
+  const handleTimezoneChange = (newTimezone) => {
+    setSelectedTimezone(newTimezone);
+    
+    // When timezone changes, convert existing times to the new timezone
+    if (form.flashDealStartTime && form.flashDealStartTime !== '') {
+      const convertedStart = convertToTimezoneDateTimeLocal(form.flashDealStartTime, newTimezone);
+      handleChange("flashDealStartTime", convertedStart);
+    }
+    
+    if (form.flashDealEndTime && form.flashDealEndTime !== '') {
+      const convertedEnd = convertToTimezoneDateTimeLocal(form.flashDealEndTime, newTimezone);
+      handleChange("flashDealEndTime", convertedEnd);
+    }
+    
+    handleChange("timezone", newTimezone);
+  };
 
   if (!isOpen) return null;
 
@@ -56,26 +144,28 @@ const CreateEditOfferModal = ({
   const handleOfferTypeChange = (type) => {
     setOfferType(type);
     handleChange("offerCategory", type);
-    
     if (type === 'flash') {
-      // Initialize flash deal specific fields from regular offer fields if they exist
       if (!form.flashDealTitle && form.offerTitle) handleChange("flashDealTitle", form.offerTitle);
       if (!form.flashDealDescription && form.offerDescription) handleChange("flashDealDescription", form.offerDescription);
       if (!form.flashDealType && form.offerType) handleChange("flashDealType", form.offerType);
       if (!form.flashDealValue && form.offerValue) handleChange("flashDealValue", form.offerValue);
       if (!form.flashDealTermsAndConditions && form.offerTermsAndConditions) handleChange("flashDealTermsAndConditions", form.offerTermsAndConditions);
-      if (!form.flashDealStartTime) handleChange("flashDealStartTime", form.offerStartDate || "");
-      if (!form.flashDealEndTime) handleChange("flashDealEndTime", form.offerEndDate || "");
-      if (!form.timezone) handleChange("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone);
+      if (!form.flashDealStartTime) handleChange("flashDealStartTime", getCurrentTimeInTimezone(selectedTimezone));
+      if (!form.flashDealEndTime) {
+        const endTime = new Date();
+        endTime.setHours(endTime.getHours() + 2);
+        const endTimeStr = endTime.toISOString().slice(0, 16);
+        const convertedEnd = convertToTimezoneDateTimeLocal(endTimeStr, selectedTimezone);
+        handleChange("flashDealEndTime", convertedEnd);
+      }
+      if (!form.timezone) handleChange("timezone", selectedTimezone);
     } else {
-      // Initialize regular offer fields from flash deal data if they exist
       if (!form.offerTitle && form.flashDealTitle) handleChange("offerTitle", form.flashDealTitle);
       if (!form.offerDescription && form.flashDealDescription) handleChange("offerDescription", form.flashDealDescription);
       if (!form.offerType && form.flashDealType) handleChange("offerType", form.flashDealType);
       if (!form.offerValue && form.flashDealValue) handleChange("offerValue", form.flashDealValue);
       if (!form.offerTermsAndConditions && form.flashDealTermsAndConditions) handleChange("offerTermsAndConditions", form.flashDealTermsAndConditions);
       if (!form.offerStartDate && form.flashDealStartTime) {
-        // Extract just the date part for regular offers
         const dateOnly = form.flashDealStartTime.split('T')[0];
         handleChange("offerStartDate", dateOnly);
       }
@@ -88,7 +178,10 @@ const CreateEditOfferModal = ({
 
   const calculateDuration = (start, end) => {
     if (!start || !end) return '';
-    const diffMs = new Date(end) - new Date(start);
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (isNaN(startDate) || isNaN(endDate)) return '';
+    const diffMs = endDate - startDate;
     const diffHours = diffMs / (1000 * 60 * 60);
     if (diffHours < 1) return `${Math.floor(diffMs / 60000)} minutes`;
     if (diffHours < 24) return `${Math.floor(diffHours)}h ${Math.floor((diffHours % 1) * 60)}m`;
@@ -97,6 +190,23 @@ const CreateEditOfferModal = ({
     return `${days} day${days > 1 ? 's' : ''}${hours > 0 ? ` ${hours}h` : ''}`;
   };
 
+  const formatDateValue = (dateString) => {
+    if (!dateString) return '';
+    try {
+      if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return dateString;
+      }
+      const date = new Date(dateString);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  };
+
+  // ✅ No past-time validation - backend handles it
   const validateForm = () => {
     if (isFlash) {
       if (!form.flashDealTitle?.trim()) { alert("Please enter flash deal title"); return false; }
@@ -104,19 +214,17 @@ const CreateEditOfferModal = ({
       if (!form.flashDealStartTime) { alert("Please set flash deal start time"); return false; }
       if (!form.flashDealEndTime) { alert("Please set flash deal end time"); return false; }
       if (!form.flashDealValue || Number(form.flashDealValue) <= 0) { alert("Please enter a valid discount value"); return false; }
-      
+      if (!form.timezone) { alert("Please select a timezone"); return false; }
+
       const start = new Date(form.flashDealStartTime);
       const end = new Date(form.flashDealEndTime);
-      const now = new Date();
-      
-      // Only validate past dates for new deals, not when editing
-      if (!editing && start < now) { alert("Start time cannot be in the past"); return false; }
+
       if (end <= start) { alert("End time must be after start time"); return false; }
-      
+
       const diffHours = (end - start) / (1000 * 60 * 60);
       if (diffHours > 48) { alert("Flash deal duration cannot exceed 48 hours"); return false; }
       if (diffHours < 1) { alert("Flash deal duration must be at least 1 hour"); return false; }
-      
+
       if (form.flashDealType === 'percentage') {
         const value = Number(form.flashDealValue);
         if (value <= 0 || value > 100) { alert("Percentage must be between 1 and 100"); return false; }
@@ -127,62 +235,46 @@ const CreateEditOfferModal = ({
       if (!form.offerStartDate) { alert("Please set offer start date"); return false; }
       if (!form.offerEndDate) { alert("Please set offer end date"); return false; }
       if (!form.offerValue || Number(form.offerValue) <= 0) { alert("Please enter a valid discount value"); return false; }
-      
+
       const start = new Date(form.offerStartDate);
       const end = new Date(form.offerEndDate);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
-      // Only validate past dates for new offers, not when editing
+
       if (!editing && start < today) { alert("Start date cannot be in the past"); return false; }
       if (end <= start) { alert("End date must be after start date"); return false; }
-      
+
       if (form.offerType === 'percentage') {
         const value = Number(form.offerValue);
         if (value <= 0 || value > 100) { alert("Percentage must be between 1 and 100"); return false; }
       }
     }
-    
+
     if (!editing && imagePreviews.length === 0) {
       alert(`Please upload at least one ${isFlash ? 'flash deal' : 'offer'} image`);
       return false;
     }
-    
+
     return true;
   };
 
   const handleSubmitWrapper = (e) => {
     e.preventDefault();
     if (validateForm()) {
-      const submitData = { ...form };
-      handleChange("offerCategory", offerType);
-      onSubmit(e, submitData);
+      const payload = {
+        ...form,
+        flashDealStartTime: form.flashDealStartTime,
+        flashDealEndTime: form.flashDealEndTime,
+      };
+      onSubmit(e, payload);
     }
   };
 
   const maxImages = isFlash ? 3 : 4;
   const canUploadMore = imagePreviews.length < maxImages;
 
-  // FIX: Format datetime-local value for flash deals
-  const formatDateTimeLocal = (dateString) => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      return date.toISOString().slice(0, 16);
-    } catch {
-      return '';
-    }
-  };
-
-  // FIX: Format date value for regular offers
-  const formatDateValue = (dateString) => {
-    if (!dateString) return '';
-    try {
-      return dateString.split('T')[0];
-    } catch {
-      return '';
-    }
-  };
+  // Get placeholder times for the picker
+  const currentTimeInTimezone = getCurrentTimeInTimezone(selectedTimezone);
 
   return (
     <div
@@ -191,7 +283,6 @@ const CreateEditOfferModal = ({
     >
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto">
 
-        {/* Header */}
         <div className="flex items-center justify-between p-6 pb-0">
           <div>
             <h2 className="df text-xl font-semibold text-stone-900 flex items-center gap-2">
@@ -212,7 +303,6 @@ const CreateEditOfferModal = ({
 
         <form onSubmit={handleSubmitWrapper} className="p-6 space-y-4">
 
-          {/* Offer Type - Disabled when editing */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1.5">
               Promotion Type *
@@ -221,7 +311,7 @@ const CreateEditOfferModal = ({
               value={offerType}
               onChange={e => handleOfferTypeChange(e.target.value)}
               className={inputCls}
-              disabled={editing} // FIX: Disabled when editing since you can't change type
+              disabled={editing}
             >
               <option value="regular">📅 Regular Offer</option>
               <option value="flash">⚡ Flash Deal</option>
@@ -231,14 +321,12 @@ const CreateEditOfferModal = ({
             )}
           </div>
 
-          {/* Flash deal info banner */}
           {isFlash && (
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
               ⚡ Flash deals run for a limited time window (max 48 hours) and appear with urgency badges to shoppers.
             </div>
           )}
 
-          {/* Title */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1.5">
               {isFlash ? "Flash Deal Title" : "Offer Title"} *
@@ -252,7 +340,6 @@ const CreateEditOfferModal = ({
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1.5">Description *</label>
             <textarea
@@ -265,7 +352,6 @@ const CreateEditOfferModal = ({
             />
           </div>
 
-          {/* Terms & Conditions */}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1.5">Terms & Conditions</label>
             <textarea
@@ -277,7 +363,6 @@ const CreateEditOfferModal = ({
             />
           </div>
 
-          {/* Images (create only) */}
           {!editing && (
             <div>
               <label className="block text-xs font-medium text-stone-500 mb-1.5">
@@ -320,7 +405,6 @@ const CreateEditOfferModal = ({
             </div>
           )}
 
-          {/* Discount Type + Value */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-stone-500 mb-1.5">Discount Type</label>
@@ -349,7 +433,6 @@ const CreateEditOfferModal = ({
             </div>
           </div>
 
-          {/* Date / Time fields */}
           {isFlash ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -358,19 +441,20 @@ const CreateEditOfferModal = ({
                   <input
                     required
                     type="datetime-local"
-                    value={formatDateTimeLocal(form.flashDealStartTime)}
-                    min={!editing ? new Date().toISOString().slice(0, 16) : undefined}
+                    value={formatForDateTimeLocal(form.flashDealStartTime)}
                     onChange={e => handleChange("flashDealStartTime", e.target.value)}
                     className={inputCls}
                   />
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    Current {selectedTimezone === 'Asia/Dubai' ? 'Dubai' : 'Indian'} time: {currentTimeInTimezone.slice(-5)}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-stone-500 mb-1.5">End Date & Time *</label>
                   <input
                     required
                     type="datetime-local"
-                    value={formatDateTimeLocal(form.flashDealEndTime)}
-                    min={form.flashDealStartTime ? formatDateTimeLocal(form.flashDealStartTime) : undefined}
+                    value={formatForDateTimeLocal(form.flashDealEndTime)}
                     onChange={e => handleChange("flashDealEndTime", e.target.value)}
                     className={inputCls}
                   />
@@ -381,20 +465,26 @@ const CreateEditOfferModal = ({
                 <label className="block text-xs font-medium text-stone-500 mb-1.5">Timezone *</label>
                 <select
                   required
-                  value={form.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
-                  onChange={e => handleChange("timezone", e.target.value)}
+                  value={form.timezone || selectedTimezone}
+                  onChange={e => handleTimezoneChange(e.target.value)}
                   className={inputCls}
                 >
-                  <option value="Asia/Kolkata">🇮🇳 India (IST)</option>
-                  <option value="Asia/Dubai">🇦🇪 Dubai (GST)</option>
-                  <option value="America/New_York">🇺🇸 USA Eastern (EST)</option>
-                  <option value="America/Los_Angeles">🇺🇸 USA Pacific (PST)</option>
-                  <option value="Europe/London">🇬🇧 UK (GMT)</option>
-                  <option value="Europe/Paris">🇫🇷 France (CET)</option>
-                  <option value="Australia/Sydney">🇦🇺 Australia (AEDT)</option>
-                  <option value="Asia/Tokyo">🇯🇵 Japan (JST)</option>
-                  <option value="Asia/Singapore">🇸🇬 Singapore (SGT)</option>
+                  <option value="Asia/Kolkata">🇮🇳 India (IST) - UTC+5:30</option>
+                  <option value="Asia/Dubai">🇦🇪 Dubai (GST) - UTC+4:00</option>
                 </select>
+                <p className="text-xs text-stone-400 mt-1">
+                  Current {(form.timezone || selectedTimezone) === 'Asia/Kolkata' ? 'Indian' : 'Dubai'} time: {
+                    new Date().toLocaleTimeString('en-US', {
+                      timeZone: form.timezone || selectedTimezone,
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    })
+                  }
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚡ Enter times in the selected timezone above
+                </p>
               </div>
 
               {form.flashDealStartTime && form.flashDealEndTime && (
@@ -433,7 +523,6 @@ const CreateEditOfferModal = ({
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-2 pt-2">
             <button
               type="button"

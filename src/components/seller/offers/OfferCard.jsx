@@ -24,12 +24,24 @@ const OfferCard = ({ offer, onView, onToggle, onEdit, onDelete }) => {
   const startDate = offer.offerStartDate || offer.startTime || offer.flashDealStartTime;
   const endDate = offer.offerEndDate || offer.endTime || offer.flashDealEndTime;
 
+  // Get the correct ID for different operations
+  const getViewId = () => {
+    // For regular offers, use offerId (the business ID)
+    if (!isFlashDeal && offer.offerId) return offer.offerId;
+    // For flash deals or fallback, use _id
+    return offer._id || offer.id;
+  };
+
+  const getDeleteId = () => {
+    // For delete, always use _id (MongoDB ObjectId)
+    return offer._id || offer.id;
+  };
+
   // Format date display based on type
   const formatDate = (date) => {
     if (!date) return 'N/A';
     const d = new Date(date);
     if (isFlashDeal) {
-      // Flash deals show time as well
       return d.toLocaleString("en-US", { 
         month: "short", 
         day: "numeric",
@@ -40,14 +52,26 @@ const OfferCard = ({ offer, onView, onToggle, onEdit, onDelete }) => {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
+  const handleView = () => {
+    const viewId = getViewId();
+    console.log('Viewing offer with ID:', viewId, 'isFlashDeal:', isFlashDeal);
+    onView(viewId);
+  };
+
+  const handleDelete = () => {
+    const deleteId = getDeleteId();
+    console.log('Deleting offer with ID:', deleteId, 'isFlashDeal:', isFlashDeal);
+    onDelete(deleteId);
+  };
+
   return (
     <div className="group bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
       {/* Image Container */}
-      <div className="relative h-40 overflow-hidden bg-stone-100">
+      <div className="relative h-40 overflow-hidden bg-stone-100" onClick={handleView}>
         <img 
           src={imageUrl} 
           alt={title}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-pointer"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
         
@@ -81,7 +105,7 @@ const OfferCard = ({ offer, onView, onToggle, onEdit, onDelete }) => {
 
       {/* Content */}
       <div className="p-4">
-        <h3 className="font-semibold text-stone-900 text-sm mb-1 line-clamp-1">
+        <h3 className="font-semibold text-stone-900 text-sm mb-1 line-clamp-1 cursor-pointer hover:text-amber-600" onClick={handleView}>
           {isFlashDeal && <Zap className="inline w-3 h-3 text-amber-500 mr-1" />}
           {title}
         </h3>
@@ -116,7 +140,7 @@ const OfferCard = ({ offer, onView, onToggle, onEdit, onDelete }) => {
         {/* Actions */}
         <div className="flex items-center justify-end gap-1 pt-2 border-t border-stone-100">
           <button 
-            onClick={() => onView(offer)}
+            onClick={handleView}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-50 transition-all"
             title="View Details"
           >
@@ -146,7 +170,7 @@ const OfferCard = ({ offer, onView, onToggle, onEdit, onDelete }) => {
             <Edit className="w-3.5 h-3.5" />
           </button>
           <button 
-            onClick={() => onDelete(offer.offerId || offer._id)}
+            onClick={handleDelete}
             className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-all"
             title="Delete"
           >

@@ -16,7 +16,9 @@ import {
   FaCamera,
   FaUpload,
   FaImages,
-  FaTrash
+  FaTrash,
+  FaEye,
+  FaEyeSlash
 } from 'react-icons/fa';
 
 const VendorRegister = () => {
@@ -47,6 +49,10 @@ const VendorRegister = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [apiError, setApiError] = useState('');
   const totalSteps = 3;
+  
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -204,6 +210,15 @@ const VendorRegister = () => {
 
   const prevStep = () => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
+  };
+
+  // Toggle password visibility
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    setShowConfirmPassword(!showConfirmPassword);
   };
 
   // In VendorRegister.jsx - Replace the handleSubmit function
@@ -628,29 +643,73 @@ const VendorRegister = () => {
               {errors.vendorShopDescription && <p className="text-red-500 text-sm mt-1">{errors.vendorShopDescription}</p>}
             </div>
 
-            <FormInput
-              label="Password *"
-              type="password"
-              name="password"
-              placeholder="At least 8 characters"
-              value={formData.password}
-              onChange={handleChange}
-              error={errors.password}
-              icon={<FaLock className="text-gray-400" />}
-              required
-            />
+            {/* Password Field with Eye Icon */}
+            <div className="relative mb-6">
+              <label className="block text-gray-700 text-sm font-semibold mb-2">
+                Password * <span className="text-gray-500 font-normal">(at least 8 characters)</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaLock className="text-gray-400" />
+                </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  placeholder="At least 8 characters"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-10 py-3 border-2 rounded-lg focus:outline-none focus:border-indigo-500 ${
+                    errors.password ? 'border-red-400' : 'border-gray-300'
+                  }`}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={togglePasswordVisibility}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none transition-colors duration-200"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+              )}
+            </div>
 
-            <FormInput
-              label="Confirm Password *"
-              type="password"
-              name="confirmPassword"
-              placeholder="Confirm your password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              error={errors.confirmPassword}
-              icon={<FaCheck className="text-gray-400" />}
-              required
-            />
+            {/* Confirm Password Field with Eye Icon */}
+            <div className="relative mb-6">
+              <label className="block text-gray-700 text-sm font-semibold mb-2">
+                Confirm Password *
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaCheck className="text-gray-400" />
+                </div>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  placeholder="Confirm your password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-10 py-3 border-2 rounded-lg focus:outline-none focus:border-indigo-500 ${
+                    errors.confirmPassword ? 'border-red-400' : 'border-gray-300'
+                  }`}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={toggleConfirmPasswordVisibility}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none transition-colors duration-200"
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p className="text-red-500 text-sm mt-1">{errors.confirmPassword}</p>
+              )}
+            </div>
 
             <div className="mt-8 mb-8">
               <div className="flex items-start">

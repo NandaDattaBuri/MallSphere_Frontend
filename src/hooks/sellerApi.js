@@ -1,5 +1,5 @@
 // sellerApi.js
-const API_BASE_URL = 'https://mallsperebackend-psbx.onrender.com/api';
+const API_BASE_URL = 'https://mallsperebackend-uh9h.onrender.com/api';
 const SELLER_URL = `${API_BASE_URL}/seller`;
 
 let isRefreshing = false;
@@ -742,9 +742,28 @@ export const sellerApi = {
 
   getSingleOffer: async (offerId) => {
     try {
+      if (!offerId) {
+        throw new Error('Offer ID is required');
+      }
+      
+      // Try to refresh token before making request
+      try {
+        await sellerApi.refreshToken();
+      } catch (refreshError) {
+        console.log('Token refresh failed, will try with existing token');
+      }
+      
+      console.log('Fetching single offer with ID:', offerId);
       const res = await authenticatedFetch(`${SELLER_URL}/get-single-offer/${offerId}`);
-      return await res.json();
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw { status: res.status, message: data.message || 'Failed to fetch offer details' };
+      }
+      
+      return data;
     } catch (error) {
+      console.error('Get single offer error:', error);
       return handleApiError(error, 'fetching offer details');
     }
   },
@@ -795,72 +814,156 @@ export const sellerApi = {
    * Create a new flash deal
    * POST /api/seller/create-flash-deal
    */
-  createFlashDeal: async (flashDealData, flashDealImages = []) => {
-    try {
-      const requiredFields = [
-        'flashDealTitle',
-        'flashDealStartTime',
-        'flashDealEndTime',
-        'flashDealType',
-        'flashDealValue',
-        'timezone'
-      ];
-      
-      const missingFields = requiredFields.filter(field => {
-        const value = flashDealData[field];
-        return value === undefined || value === null || value === '';
-      });
-      
-      if (missingFields.length > 0) {
-        throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-      }
-
-      if (flashDealData.flashDealType === 'percentage') {
-        const value = Number(flashDealData.flashDealValue);
-        if (value < 0 || value > 100) {
-          throw new Error('Percentage discount must be between 0 and 100');
-        }
-      } else {
-        const value = Number(flashDealData.flashDealValue);
-        if (value < 0) {
-          throw new Error('Discount value cannot be negative');
-        }
-      }
-
-      if (flashDealImages.length > 3) {
-        throw new Error('Maximum 3 images allowed for flash deals');
-      }
-
-      const formData = new FormData();
-
-      formData.append('flashDealTitle', String(flashDealData.flashDealTitle || '').trim());
-      formData.append('flashDealDescription', String(flashDealData.flashDealDescription || '').trim());
-      formData.append('flashDealStartTime', String(flashDealData.flashDealStartTime || ''));
-      formData.append('flashDealEndTime', String(flashDealData.flashDealEndTime || ''));
-      formData.append('flashDealType', String(flashDealData.flashDealType || 'percentage'));
-      formData.append('flashDealValue', String(flashDealData.flashDealValue || 0));
-      formData.append('flashDealTermsAndConditions', String(flashDealData.flashDealTermsAndConditions || '').trim());
-      formData.append('timezone', flashDealData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-
-      flashDealImages.forEach((img) => formData.append('flashDealImages', img));
-
-      const res = await authenticatedFetch(`${SELLER_URL}/create-flash-deal`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to create flash deal');
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('Create flash deal error:', error);
-      return handleApiError(error, 'creating flash deal');
+  /**
+ * Create a new flash deal
+ * POST /api/seller/create-flash-deal
+ */
+createFlashDeal: async (flashDealData, flashDealImages = []) => {
+  try {
+    // 🔹 STEP 1: Verify authentication state FIRST
+    const sellerId = localStorage.getItem('sellerId');
+    const isAuth = localStorage.getItem('sellerAuthenticated') === 'true';
+    const approvalStatus = localStorage.getItem('vendorApprovalStatus');
+    
+    console.log('=== Create Flash Deal Debug ===');
+    console.log('Seller ID:', sellerId);
+    console.log('Is Authenticated:', isAuth);
+    console.log('Approval Status:', approvalStatus);
+    console.log('Has Images:', flashDealImages.length);
+    console.log('Flash Deal Data:', flashDealData);
+    
+    // Check if user is logged in
+    if (!sellerId || !isAuth) {
+      throw new Error('You are not logged in. Please login as a seller first.');
     }
-  },
+    
+    // Check if seller is approved (if your backend requires this)
+    if (approvalStatus && approvalStatus !== 'approved') {
+      throw new Error(`Your account is ${approvalStatus}. Please wait for vendor verification.`);
+    }
+    
+    // 🔹 STEP 2: Validate required fields
+    const requiredFields = [
+      'flashDealTitle',
+      'flashDealStartTime',
+      'flashDealEndTime',
+      'flashDealType',
+      'flashDealValue',
+      'timezone'
+    ];
+    
+    const missingFields = requiredFields.filter(field => {
+      const value = flashDealData[field];
+      return value === undefined || value === null || value === '';
+    });
+    
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+
+    // 🔹 STEP 3: Validate values
+    if (flashDealData.flashDealType === 'percentage') {
+      const value = Number(flashDealData.flashDealValue);
+      if (value < 0 || value > 100) {
+        throw new Error('Percentage discount must be between 0 and 100');
+      }
+    } else {
+      const value = Number(flashDealData.flashDealValue);
+      if (value < 0) {
+        throw new Error('Discount value cannot be negative');
+      }
+    }
+
+    // 🔹 STEP 4: Validate image count
+    if (flashDealImages.length === 0) {
+      throw new Error('At least one image is required for flash deal');
+    }
+    
+    if (flashDealImages.length > 3) {
+      throw new Error('Maximum 3 images allowed for flash deals');
+    }
+
+    // 🔹 STEP 5: Try to refresh token before making request (ensure session is valid)
+    try {
+      console.log('[Debug] Attempting token refresh before create...');
+      await sellerApi.refreshToken();
+      console.log('[Debug] Token refresh successful');
+    } catch (refreshError) {
+      console.warn('[Debug] Token refresh failed, will proceed with existing token:', refreshError.message);
+      // Don't throw here, let the main request try
+    }
+
+    // 🔹 STEP 6: Build FormData
+    const formData = new FormData();
+
+    formData.append('flashDealTitle', String(flashDealData.flashDealTitle || '').trim());
+    formData.append('flashDealDescription', String(flashDealData.flashDealDescription || '').trim());
+    formData.append('flashDealStartTime', String(flashDealData.flashDealStartTime || ''));
+    formData.append('flashDealEndTime', String(flashDealData.flashDealEndTime || ''));
+    formData.append('flashDealType', String(flashDealData.flashDealType || 'percentage'));
+    formData.append('flashDealValue', String(flashDealData.flashDealValue || 0));
+    formData.append('flashDealTermsAndConditions', String(flashDealData.flashDealTermsAndConditions || '').trim());
+    formData.append('timezone', flashDealData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+    // Append images
+    flashDealImages.forEach((img) => {
+      formData.append('flashDealImages', img);
+    });
+
+    console.log('[Debug] Making request to:', `${SELLER_URL}/create-flash-deal`);
+    console.log('[Debug] FormData entries:');
+    for (let pair of formData.entries()) {
+      if (pair[0] === 'flashDealImages') {
+        console.log(`  ${pair[0]}: [File] ${pair[1].name}`);
+      } else {
+        console.log(`  ${pair[0]}: ${pair[1]}`);
+      }
+    }
+
+    // 🔹 STEP 7: Make the request
+    const res = await authenticatedFetch(`${SELLER_URL}/create-flash-deal`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    console.log('[Debug] Response status:', res.status);
+    
+    const data = await res.json();
+    console.log('[Debug] Response data:', data);
+    
+    if (!res.ok) {
+      // Handle specific error cases
+      if (res.status === 403) {
+        if (data.message?.toLowerCase().includes('approv') || data.message?.toLowerCase().includes('pending')) {
+          throw new Error('Your seller account is pending approval. Please wait for verification.');
+        }
+        throw new Error('You do not have seller permissions. Please login with a seller account.');
+      }
+      throw new Error(data.message || 'Failed to create flash deal');
+    }
+    
+    console.log('[Debug] Flash deal created successfully!');
+    return data;
+    
+  } catch (error) {
+    console.error('Create flash deal error:', error);
+    
+    // Handle specific error types
+    if (error.message?.includes('not logged in') || error.message?.includes('login')) {
+      // Redirect to login
+      window.location.href = '/seller/login';
+      throw error;
+    }
+    
+    if (error.status === 401 || error.message?.includes('session expired')) {
+      sellerApi.clearAuthData();
+      window.location.href = '/seller/login';
+      throw new Error('Your session has expired. Please login again.');
+    }
+    
+    return handleApiError(error, 'creating flash deal');
+  }
+},
 
   /**
    * Get all active flash deals

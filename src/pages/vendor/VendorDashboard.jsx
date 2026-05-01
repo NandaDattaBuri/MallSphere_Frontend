@@ -46,7 +46,7 @@ const VendorDashboard = () => {
   const [activeOffersError, setActiveOffersError] = useState('');
   const [activeOffersPagination, setActiveOffersPagination] = useState({
     page: 1,
-    limit: 5,
+    limit: 6,
     total: 0,
     totalPages: 1
   });
@@ -63,6 +63,10 @@ const VendorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+
+  // ✅ FIXED: Declare userRole and canEditOffers as state
+  const [userRole, setUserRole] = useState('user');
+  const [canEditOffers, setCanEditOffers] = useState(false);
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -101,37 +105,80 @@ const VendorDashboard = () => {
   const [licenseItemsPerPage, setLicenseItemsPerPage] = useState(6);
   const [licenseCurrentPage, setLicenseCurrentPage] = useState(1);
 
-  // ==================== SINGLE AUTH + BOOT useEffect ====================
-  // One effect only — no race conditions, no double profile loads.
+  // ✅ FIXED: Move getUserRole inside useEffect and properly declare
+  useEffect(() => {
+    const getUserRole = async () => {
+      try {
+        // Try to get vendor profile first
+        const response = await vendorApi.getVendorProfile();
+        
+        console.log('Vendor profile loaded:', response);
+        
+        if (response?.success && response?.data) {
+          // Check if user is a vendor or seller
+          const role = response.data.role || response.data.userType;
+          
+          console.log('User role detected:', role);
+          
+          if (role === 'vendor' || role === 'seller') {
+            setUserRole(role);
+            setCanEditOffers(true);
+            console.log('Edit offers enabled:', true);
+          } else {
+            setUserRole('user');
+            setCanEditOffers(false);
+            console.log('Edit offers disabled');
+          }
+        } else {
+          // Check localStorage for role
+          const storedVendorData = localStorage.getItem('vendorData');
+          if (storedVendorData) {
+            try {
+              const parsedData = JSON.parse(storedVendorData);
+              const role = parsedData.role || parsedData.userType;
+              if (role === 'vendor' || role === 'seller') {
+                setUserRole(role);
+                setCanEditOffers(true);
+                console.log('Role from localStorage:', role);
+              }
+            } catch (e) {
+              console.error('Error parsing vendorData:', e);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error getting user role:', error);
+        setUserRole('user');
+        setCanEditOffers(false);
+      }
+    };
 
+    getUserRole();
+  }, []); // Empty dependency array means this runs once on mount
+
+  // ==================== SINGLE AUTH + BOOT useEffect ====================
   useEffect(() => {
     const checkAuthAndLoad = async () => {
-      // Quick localStorage gate — avoids flash of content for logged-out users
       if (!vendorApi.isAuthenticated()) {
         navigate('/vendor/login');
         return;
       }
 
       try {
-        // getVendorProfile() handles 403 gracefully for regular vendors.
-        // It will NOT throw for "Access denied" — it returns cached data instead.
         const profile = await vendorApi.getVendorProfile();
 
         if (profile && (profile.success || profile.data || profile.vendor)) {
-          // Cookie is valid — load all dashboard data
           await loadVendorData();
           await Promise.allSettled([
             loadActiveOffers(),
             loadVendorEvents(),
           ]);
         } else {
-          // Profile load returned nothing useful — treat as unauthenticated
           navigate('/vendor/login');
         }
       } catch (err) {
         console.error('Auth check failed:', err);
 
-        // If token expired, attempt a single refresh then retry
         if (err.message?.includes('expired') || err.message?.includes('401')) {
           try {
             await vendorApi.refreshToken();
@@ -140,13 +187,12 @@ const VendorDashboard = () => {
               loadActiveOffers(),
               loadVendorEvents(),
             ]);
-            return; // success after refresh — stop here
+            return;
           } catch (refreshError) {
             console.error('Token refresh failed:', refreshError);
           }
         }
 
-        // Refresh failed or non-token error — clear state and go to login
         vendorApi.clearAuthData();
         navigate('/vendor/login');
       }
@@ -178,8 +224,6 @@ const VendorDashboard = () => {
     }
   };
 
-  // Loads the vendor profile and stores it in state + localStorage.
-  // Uses getVendorProfile() which safely handles 403 for regular vendors.
   const loadVendorProfile = async () => {
     try {
       const profile = await vendorApi.getVendorProfile();
@@ -191,13 +235,65 @@ const VendorDashboard = () => {
       console.log('Vendor profile loaded:', profile);
     } catch (error) {
       console.error('Error loading vendor profile:', error);
-      // Fall back to cached data so the dashboard still renders
       const savedData = localStorage.getItem('vendorData');
       if (savedData) {
         try {
           setVendorData(JSON.parse(savedData));
         } catch (_) {}
       }
+    }
+  };
+
+  // Refresh handlers for each tab
+  const handleRefreshPendingStalls = async () => {
+    setActionLoading(prev => ({ ...prev, refreshing: true }));
+    try {
+      await loadPendingStalls(pagination.pending.page);
+    } catch (error) {
+      console.error('Error refreshing pending stalls:', error);
+      setError('Failed to refresh pending stalls');
+    } finally {
+      setActionLoading(prev => ({ ...prev, refreshing: false }));
+    }
+  };
+
+  const handleRefreshApprovedStalls = async () => {
+    setActionLoading(prev => ({ ...prev, refreshing: true }));
+    try {
+      await loadApprovedStalls(pagination.approved.page);
+    } catch (error) {
+      console.error('Error refreshing approved stalls:', error);
+      setError('Failed to refresh approved stalls');
+    } finally {
+      setActionLoading(prev => ({ ...prev, refreshing: false }));
+    }
+  };
+
+  const handleRefreshRejectedStalls = async () => {
+    setActionLoading(prev => ({ ...prev, refreshing: true }));
+    try {
+      await loadRejectedStalls(pagination.rejected.page);
+    } catch (error) {
+      console.error('Error refreshing rejected stalls:', error);
+      setError('Failed to refresh rejected stalls');
+    } finally {
+      setActionLoading(prev => ({ ...prev, refreshing: false }));
+    }
+  };
+
+  const handleRefreshAllStalls = async () => {
+    setActionLoading(prev => ({ ...prev, refreshing: true }));
+    try {
+      await Promise.all([
+        loadPendingStalls(pagination.pending.page),
+        loadApprovedStalls(pagination.approved.page),
+        loadRejectedStalls(pagination.rejected.page)
+      ]);
+    } catch (error) {
+      console.error('Error refreshing all stalls:', error);
+      setError('Failed to refresh stalls');
+    } finally {
+      setActionLoading(prev => ({ ...prev, refreshing: false }));
     }
   };
 
@@ -423,6 +519,7 @@ const VendorDashboard = () => {
 
     try {
       setAssigningLicense(true);
+      // Add your license assignment API call here
       alert('License assigned successfully!');
       setShowAssignLicenseModal(false);
       setSelectedLicense(null);
@@ -453,26 +550,28 @@ const VendorDashboard = () => {
       setActiveOffersError('');
       const response = await vendorApi.getMallActiveOffers();
 
+      console.log('Active offers response:', response);
+
+      let offers = [];
       if (response?.success && response?.offers && Array.isArray(response.offers)) {
-        setActiveOffers(response.offers);
-        setActiveOffersPagination(prev => ({
-          ...prev,
-          total: response.offers.length,
-          totalPages: Math.ceil(response.offers.length / prev.limit)
-        }));
+        offers = response.offers;
+      } else if (response?.data && Array.isArray(response.data)) {
+        offers = response.data;
       } else if (Array.isArray(response)) {
-        setActiveOffers(response);
-        setActiveOffersPagination(prev => ({
-          ...prev,
-          total: response.length,
-          totalPages: Math.ceil(response.length / prev.limit)
-        }));
-      } else {
-        setActiveOffers([]);
+        offers = response;
       }
+
+      setActiveOffers(offers);
+      const totalPages = Math.ceil(offers.length / activeOffersPagination.limit);
+      setActiveOffersPagination(prev => ({
+        ...prev,
+        total: offers.length,
+        totalPages: totalPages || 1
+      }));
     } catch (error) {
       console.error('Error loading active offers:', error);
       setActiveOffersError(error.message || 'Failed to load active offers');
+      setActiveOffers([]);
     } finally {
       setActiveOffersLoading(false);
     }
@@ -632,6 +731,10 @@ const VendorDashboard = () => {
     return items.slice(start, end);
   };
 
+  // Debug log to see if edit is enabled
+  console.log('canEditOffers in dashboard:', canEditOffers);
+  console.log('userRole:', userRole);
+
   if (loading) {
     return <LoadingSpinner message="Preparing your dashboard..." />;
   }
@@ -686,6 +789,7 @@ const VendorDashboard = () => {
               }}
               getFilteredStalls={getFilteredStalls}
               getPaginatedItems={getPaginatedItems}
+              onRefresh={handleRefreshPendingStalls}
             />
           )}
 
@@ -700,6 +804,10 @@ const VendorDashboard = () => {
               onViewDetails={loadStallDetails}
               getFilteredStalls={getFilteredStalls}
               getPaginatedItems={getPaginatedItems}
+              getRatingStars={(rating) => {
+                return '⭐'.repeat(Math.floor(rating)) + '☆'.repeat(5 - Math.floor(rating));
+              }}
+              onRefresh={handleRefreshApprovedStalls}
             />
           )}
 
@@ -714,6 +822,7 @@ const VendorDashboard = () => {
               onViewDetails={loadStallDetails}
               getFilteredStalls={getFilteredStalls}
               getPaginatedItems={getPaginatedItems}
+              onRefresh={handleRefreshRejectedStalls}
             />
           )}
 
@@ -727,6 +836,8 @@ const VendorDashboard = () => {
               onViewDetails={loadStallDetails}
               getFilteredStalls={getFilteredStalls}
               getPaginatedItems={getPaginatedItems}
+              onRefresh={handleRefreshAllStalls}
+              actionLoading={actionLoading}
             />
           )}
 
@@ -801,6 +912,11 @@ const VendorDashboard = () => {
               onPageChange={handleActiveOffersPageChange}
               onRefresh={loadActiveOffers}
               getPaginatedOffers={getPaginatedOffers}
+              canEdit={canEditOffers}
+              onOfferUpdated={(updatedOffer) => {
+                console.log('Offer updated:', updatedOffer);
+                loadActiveOffers(); // Refresh offers after update
+              }}
             />
           )}
 

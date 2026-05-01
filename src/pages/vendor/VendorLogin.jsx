@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import AuthLayout from '../../components/AuthLayout';
 import FormInput from '../../components/FormInput';
-import { FaEnvelope, FaLock, FaShieldAlt, FaPaperPlane } from 'react-icons/fa';
+import { FaEnvelope, FaLock, FaShieldAlt, FaPaperPlane, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { vendorApi } from '../../hooks/vendorApi';
 
 const VendorLogin = () => {
@@ -21,6 +21,7 @@ const VendorLogin = () => {
   const [resendMessage, setResendMessage] = useState('');
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (location.state?.message) {
@@ -43,12 +44,24 @@ const VendorLogin = () => {
       }, 5000);
     }
     
+    // ONLY show verification banner if coming from an unverified login attempt
+    // Check if we have a pending verification that was created from login (not registration)
     const pendingVerification = localStorage.getItem('pendingVendorVerification');
     if (pendingVerification) {
-      const data = JSON.parse(pendingVerification);
-      if (data.email && !data.verified && !location.state?.verified) {
-        setShowVerificationBanner(true);
-        setVerificationEmail(data.email);
+      try {
+        const data = JSON.parse(pendingVerification);
+        // Only show banner if:
+        // 1. It's from login (fromLogin === true)
+        // 2. Not already verified
+        // 3. Not coming from verification page
+        // 4. Not already shown (check if we haven't dismissed it)
+        if (data.fromLogin === true && !data.verified && !location.state?.verified && !sessionStorage.getItem('bannerDismissed')) {
+          setShowVerificationBanner(true);
+          setVerificationEmail(data.email);
+          // Don't remove the item yet, keep it for resend functionality
+        }
+      } catch (error) {
+        console.error('Error parsing pending verification:', error);
       }
     }
   }, [location.state]);
@@ -68,6 +81,8 @@ const VendorLogin = () => {
     // Clear verification banner when user starts typing
     if (showVerificationBanner) {
       setShowVerificationBanner(false);
+      // Also store in sessionStorage that banner was dismissed
+      sessionStorage.setItem('bannerDismissed', 'true');
     }
   };
 
@@ -124,6 +139,9 @@ const VendorLogin = () => {
       fromLogin: true
     }));
     
+    // Clear banner dismissed flag
+    sessionStorage.removeItem('bannerDismissed');
+    
     // Navigate to OTP verification page
     navigate('/vendor/verify-otp', {
       state: {
@@ -145,6 +163,9 @@ const VendorLogin = () => {
       timestamp: Date.now(),
       fromLogin: true
     }));
+    
+    // Clear banner dismissed flag
+    sessionStorage.removeItem('bannerDismissed');
     
     navigate('/vendor/verify-otp', {
       state: {
@@ -185,7 +206,9 @@ const VendorLogin = () => {
         console.log('Login message:', response.message);
       }
 
+      // Clear any pending verification data on successful login
       localStorage.removeItem('pendingVendorVerification');
+      sessionStorage.removeItem('bannerDismissed');
       
       navigate('/vendor/dashboard');
 
@@ -199,9 +222,22 @@ const VendorLogin = () => {
           error.message.toLowerCase().includes('not verified') ||
           error.message.toLowerCase().includes('please verify your account')
       )) {
-        // Show verification banner and dialog
+        // Store unverified email for verification
         setUnverifiedEmail(formData.email);
         setVerificationEmail(formData.email);
+        
+        // Store pending verification data
+        localStorage.setItem('pendingVendorVerification', JSON.stringify({
+          email: formData.email,
+          timestamp: Date.now(),
+          fromLogin: true,
+          verified: false
+        }));
+        
+        // Clear any previous dismissal
+        sessionStorage.removeItem('bannerDismissed');
+        
+        // Show verification banner and dialog
         setShowVerificationBanner(true);
         setShowVerificationDialog(true);
         
@@ -228,6 +264,15 @@ const VendorLogin = () => {
     } else {
       navigate('/vendor/forgot-password');
     }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const dismissBanner = () => {
+    setShowVerificationBanner(false);
+    sessionStorage.setItem('bannerDismissed', 'true');
   };
 
   // Verification Banner Component
@@ -258,7 +303,7 @@ const VendorLogin = () => {
               Send OTP & Verify Account
             </button>
             <button
-              onClick={() => setShowVerificationBanner(false)}
+              onClick={dismissBanner}
               className="text-amber-700 text-sm font-medium hover:text-amber-900 transition-colors"
             >
               Dismiss
@@ -341,7 +386,7 @@ const VendorLogin = () => {
       {showVerificationDialog && <VerificationDialog />}
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-xl">
-        {/* Verification Banner */}
+        {/* Verification Banner - Only shows when there's an unverified login attempt */}
         {showVerificationBanner && <VerificationBanner />}
 
         <div className="mb-6">
@@ -381,17 +426,39 @@ const VendorLogin = () => {
           required
         />
 
-        <FormInput
-          label="Password"
-          type="password"
-          name="password"
-          placeholder="Enter your password"
-          value={formData.password}
-          onChange={handleChange}
-          error={errors.password}
-          icon={<FaLock className="text-gray-400" />}
-          required
-        />
+        {/* Password Field with Eye Icon */}
+        <div className="relative mb-6">
+          <label className="block text-gray-700 text-sm font-semibold mb-2">
+            Password <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <FaLock className="text-gray-400" />
+            </div>
+            <input
+              type={showPassword ? "text" : "password"}
+              name="password"
+              placeholder="Enter your password"
+              value={formData.password}
+              onChange={handleChange}
+              className={`w-full pl-10 pr-10 py-3 border-2 rounded-lg focus:outline-none focus:border-indigo-500 ${
+                errors.password ? 'border-red-400' : 'border-gray-300'
+              }`}
+              required
+            />
+            <button
+              type="button"
+              onClick={togglePasswordVisibility}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none transition-colors duration-200"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+            </button>
+          </div>
+          {errors.password && (
+            <p className="text-red-500 text-xs mt-1">{errors.password}</p>
+          )}
+        </div>
 
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">

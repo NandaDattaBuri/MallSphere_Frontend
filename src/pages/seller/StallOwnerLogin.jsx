@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import AuthLayout from '../../components/AuthLayout';
 import FormInput from '../../components/FormInput';
-import { FaEnvelope, FaStore, FaLock, FaShieldAlt, FaPaperPlane } from 'react-icons/fa';
+import { FaEnvelope, FaStore, FaLock, FaShieldAlt, FaPaperPlane, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { sellerApi } from '../../hooks/sellerApi'; 
 
 const StallOwnerLogin = () => {
@@ -21,6 +21,7 @@ const StallOwnerLogin = () => {
   const [resendMessage, setResendMessage] = useState('');
   const [showVerificationBanner, setShowVerificationBanner] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (location.state?.message) {
@@ -211,6 +212,10 @@ const StallOwnerLogin = () => {
     }
   };
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   // Verification Banner Component
   const VerificationBanner = () => (
     <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 rounded-lg shadow-sm">
@@ -353,18 +358,33 @@ const StallOwnerLogin = () => {
           disabled={isLoading}
         />
 
-        <FormInput
-          label="Password"
-          type="password"
-          name="password"
-          placeholder="••••••••"
-          value={formData.password}
-          onChange={handleChange}
-          error={errors.password}
-          icon={<FaLock className="text-gray-400" />}
-          required
-          disabled={isLoading}
-        />
+        {/* Password Field with Eye Icon */}
+        <div className="relative mb-6">
+          <FormInput
+            label="Password"
+            type={showPassword ? "text" : "password"}
+            name="password"
+            placeholder="••••••••"
+            value={formData.password}
+            onChange={handleChange}
+            error={errors.password}
+            icon={<FaLock className="text-gray-400" />}
+            required
+            disabled={isLoading}
+          />
+          <button
+            type="button"
+            onClick={togglePasswordVisibility}
+            className="absolute right-3 top-[38px] text-gray-500 hover:text-gray-700 focus:outline-none transition-colors duration-200"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? (
+              <FaEyeSlash className="h-5 w-5" />
+            ) : (
+              <FaEye className="h-5 w-5" />
+            )}
+          </button>
+        </div>
 
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">

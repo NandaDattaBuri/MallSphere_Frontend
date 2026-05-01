@@ -7,6 +7,11 @@ const OfferDetailModal = ({ offer, onClose, onEdit, onDelete }) => {
 
   const isFlashDeal = offer.isFlashDeal || !!offer.flashDealTitle;
   
+  // Get the correct ID for different operations
+  const getDeleteId = () => {
+    return offer._id || offer.id;
+  };
+  
   const imageUrl = offer.offerImages?.[0]?.url || 
     offer.banners?.[0]?.url || 
     "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&h=300&fit=crop";
@@ -20,6 +25,22 @@ const OfferDetailModal = ({ offer, onClose, onEdit, onDelete }) => {
   const endDate = offer.offerEndDate || offer.endTime || offer.flashDealEndTime;
   const terms = offer.offerTermsAndConditions || offer.termsAndConditions || offer.flashDealTermsAndConditions || 'No terms specified';
   const timezone = offer.timezone;
+
+  // Format date for display
+  const formatDate = (date, includeTime = false) => {
+    if (!date) return 'N/A';
+    const d = new Date(date);
+    if (includeTime) {
+      return d.toLocaleString();
+    }
+    return d.toLocaleDateString();
+  };
+
+  const handleDelete = () => {
+    const deleteId = getDeleteId();
+    console.log('Deleting from modal with ID:', deleteId);
+    onDelete(deleteId);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
@@ -80,15 +101,15 @@ const OfferDetailModal = ({ offer, onClose, onEdit, onDelete }) => {
               <p className="text-sm font-medium text-stone-900">
                 {isFlashDeal ? (
                   <>
-                    {new Date(startDate).toLocaleString()}
+                    {formatDate(startDate, true)}
                     <br />
                     <span className="text-stone-400">to</span>
                     <br />
-                    {new Date(endDate).toLocaleString()}
+                    {formatDate(endDate, true)}
                   </>
                 ) : (
                   <>
-                    {new Date(startDate).toLocaleDateString()} - {new Date(endDate).toLocaleDateString()}
+                    {formatDate(startDate)} - {formatDate(endDate)}
                   </>
                 )}
               </p>
@@ -118,10 +139,7 @@ const OfferDetailModal = ({ offer, onClose, onEdit, onDelete }) => {
               Edit {isFlashDeal ? 'Flash Deal' : 'Offer'}
             </button>
             <button
-              onClick={() => {
-                onDelete(offer.offerId || offer._id);
-                onClose();
-              }}
+              onClick={handleDelete}
               className="flex-1 py-2.5 border border-rose-200 text-rose-600 hover:bg-rose-50 text-sm font-medium rounded-xl transition-all"
             >
               Delete {isFlashDeal ? 'Flash Deal' : 'Offer'}

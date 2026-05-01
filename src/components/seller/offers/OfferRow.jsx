@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Zap, Edit, Trash2, Timer } from 'lucide-react';
+import { Clock, Zap, Edit, Trash2, Timer, Eye } from 'lucide-react';
 import { STATUS_CONFIG } from '../../utils/constants';
 
 const OfferRow = ({ offer, onToggle, onEdit, onDelete, onView }) => {
@@ -17,6 +17,19 @@ const OfferRow = ({ offer, onToggle, onEdit, onDelete, onView }) => {
   const discountValue = offer.offerValue || offer.dealValue || offer.flashDealValue || 0;
   const endDate = offer.offerEndDate || offer.endTime || offer.flashDealEndTime;
 
+  // Get the appropriate ID for different operations
+  const getViewId = () => {
+    // For regular offers, use offerId (the business ID)
+    if (!isFlashDeal && offer.offerId) return offer.offerId;
+    // For flash deals or fallback, use _id
+    return offer._id || offer.id;
+  };
+
+  const getDeleteId = () => {
+    // For delete, always use _id (MongoDB ObjectId)
+    return offer._id || offer.id;
+  };
+
   const formatDate = (date) => {
     if (!date) return 'N/A';
     const d = new Date(date);
@@ -31,8 +44,20 @@ const OfferRow = ({ offer, onToggle, onEdit, onDelete, onView }) => {
     return d.toLocaleDateString();
   };
 
+  const handleView = () => {
+    const viewId = getViewId();
+    console.log('Viewing offer with ID:', viewId, 'isFlashDeal:', isFlashDeal);
+    onView(viewId);
+  };
+
+  const handleDelete = () => {
+    const deleteId = getDeleteId();
+    console.log('Deleting offer with ID:', deleteId, 'isFlashDeal:', isFlashDeal);
+    onDelete(deleteId);
+  };
+
   return (
-    <tr className="hover:bg-stone-50 transition-colors cursor-pointer" onClick={() => onView(offer)}>
+    <tr className="hover:bg-stone-50 transition-colors cursor-pointer" onClick={handleView}>
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -93,6 +118,13 @@ const OfferRow = ({ offer, onToggle, onEdit, onDelete, onView }) => {
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+          <button 
+            onClick={handleView}
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+            title="View Details"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
           {!isFlashDeal && (
             <button 
               onClick={() => onToggle(offer)} 
@@ -114,7 +146,7 @@ const OfferRow = ({ offer, onToggle, onEdit, onDelete, onView }) => {
             <Edit className="w-4 h-4" />
           </button>
           <button 
-            onClick={() => onDelete(offer.offerId || offer._id)} 
+            onClick={handleDelete}
             className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50"
             title="Delete"
           >

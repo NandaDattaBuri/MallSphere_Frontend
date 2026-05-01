@@ -15,6 +15,8 @@ import {
   FaBuilding,
   FaIdCard,
   FaTags,
+  FaEye,
+  FaEyeSlash,
 } from 'react-icons/fa';
 
 const StallOwnerRegister = () => {
@@ -43,6 +45,10 @@ const StallOwnerRegister = () => {
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+  
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Handle text input changes
   const handleChange = (e) => {
@@ -84,6 +90,7 @@ const StallOwnerRegister = () => {
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (!formData.email.trim()) newErrors.email = 'Email is required';
     if (!formData.password) newErrors.password = 'Password is required';
+    if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
     if (formData.password !== formData.confirmPassword)
       newErrors.confirmPassword = 'Passwords do not match';
     if (!formData.licenseId.trim()) newErrors.licenseId = 'License ID is required';
@@ -138,6 +145,15 @@ const StallOwnerRegister = () => {
     }
   };
 
+  // Toggle password visibility
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    setShowConfirmPassword(!showConfirmPassword);
+  };
+
   return (
     <AuthLayout type="register" role="stall-owner" backLink="/stall-owner/login">
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-xl">
@@ -149,117 +165,174 @@ const StallOwnerRegister = () => {
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-6">
-          <FormInput
-            label="Full Name"
-            type="text"
-            name="name"
-            placeholder="John Doe"
-            value={formData.name}
-            onChange={handleChange}
-            error={errors.name}
-            icon={<FaUser className="text-gray-400" />}
-            required
-          />
+        {/* Profile Section - MOVED TO TOP */}
+        <div className="mb-8 pb-6 border-b-2 border-gray-100">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <FaUser className="text-purple-600" />
+            Profile Information
+          </h2>
+          
+          {/* Profile Picture */}
+          <div className="mb-6">
+            <label className="block text-gray-700 text-sm font-semibold mb-2">
+              Profile Picture <span className="text-red-500">*</span>
+            </label>
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0">
+                {profilePreview ? (
+                  <img
+                    src={profilePreview}
+                    alt="Profile preview"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-purple-300 shadow-md"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                    <FaImage className="text-gray-400 text-2xl" />
+                  </div>
+                )}
+              </div>
+              <div className="flex-1">
+                <input
+                  type="file"
+                  name="profilePicture"
+                  accept="image/*"
+                  onChange={handleProfilePicture}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">Recommended: Square image, 400x400px</p>
+              </div>
+            </div>
+            {errors.profilePicture && (
+              <p className="text-red-500 text-xs mt-1">{errors.profilePicture}</p>
+            )}
+          </div>
 
-          <FormInput
-            label="Email Address"
-            type="email"
-            name="email"
-            placeholder="owner@example.com"
-            value={formData.email}
-            onChange={handleChange}
-            error={errors.email}
-            icon={<FaEnvelope className="text-gray-400" />}
-            required
-          />
+          {/* Shop Images */}
+          <div>
+            <label className="block text-gray-700 text-sm font-semibold mb-2">
+              Shop Images <span className="text-red-500">*</span>{' '}
+              <span className="text-gray-400 font-normal">(1–5 images)</span>
+            </label>
+            <input
+              type="file"
+              name="sellerShopImage"
+              accept="image/*"
+              multiple
+              onChange={handleShopImages}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+            />
+            {shopImagePreviews.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {shopImagePreviews.map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt={`Shop ${i + 1}`}
+                    className="w-20 h-20 rounded-lg object-cover border-2 border-gray-300 hover:border-purple-400 transition-colors"
+                  />
+                ))}
+              </div>
+            )}
+            {errors.sellerShopImages && (
+              <p className="text-red-500 text-xs mt-1">{errors.sellerShopImages}</p>
+            )}
+          </div>
+        </div>
 
-          <FormInput
-            label="Shop Name"
-            type="text"
-            name="shopName"
-            placeholder="Fashion Hub"
-            value={formData.shopName}
-            onChange={handleChange}
-            error={errors.shopName}
-            icon={<FaStore className="text-gray-400" />}
-            required
-          />
+        {/* Business Information Section */}
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <FaStore className="text-purple-600" />
+            Business Information
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <FormInput
+              label="Shop Name"
+              type="text"
+              name="shopName"
+              placeholder="Fashion Hub"
+              value={formData.shopName}
+              onChange={handleChange}
+              error={errors.shopName}
+              icon={<FaStore className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="Mall Name"
-            type="text"
-            name="mallName"
-            placeholder="City Mall"
-            value={formData.mallName}
-            onChange={handleChange}
-            error={errors.mallName}
-            icon={<FaBuilding className="text-gray-400" />}
-            required
-          />
+            <FormInput
+              label="Mall Name"
+              type="text"
+              name="mallName"
+              placeholder="City Mall"
+              value={formData.mallName}
+              onChange={handleChange}
+              error={errors.mallName}
+              icon={<FaBuilding className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="License ID"
-            type="text"
-            name="licenseId"
-            placeholder="LIC-2024-001"
-            value={formData.licenseId}
-            onChange={handleChange}
-            error={errors.licenseId}
-            icon={<FaIdCard className="text-gray-400" />}
-            required
-          />
+            <FormInput
+              label="License ID"
+              type="text"
+              name="licenseId"
+              placeholder="LIC-2024-001"
+              value={formData.licenseId}
+              onChange={handleChange}
+              error={errors.licenseId}
+              icon={<FaIdCard className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="Category"
-            type="text"
-            name="category"
-            placeholder="Fashion, Food, Electronics..."
-            value={formData.category}
-            onChange={handleChange}
-            error={errors.category}
-            icon={<FaTags className="text-gray-400" />}
-            required
-          />
+            <FormInput
+              label="Category"
+              type="text"
+              name="category"
+              placeholder="Fashion, Food, Electronics..."
+              value={formData.category}
+              onChange={handleChange}
+              error={errors.category}
+              icon={<FaTags className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="Contact Number"
-            type="tel"
-            name="sellerContactNumber"
-            placeholder="+1 234 567 8900"
-            value={formData.sellerContactNumber}
-            onChange={handleChange}
-            error={errors.sellerContactNumber}
-            icon={<FaPhone className="text-gray-400" />}
-            required
-          />
+            <FormInput
+              label="Contact Number"
+              type="tel"
+              name="sellerContactNumber"
+              placeholder="+1 234 567 8900"
+              value={formData.sellerContactNumber}
+              onChange={handleChange}
+              error={errors.sellerContactNumber}
+              icon={<FaPhone className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="Location"
-            type="text"
-            name="location"
-            placeholder="Hyderabad"
-            value={formData.location}
-            onChange={handleChange}
-            error={errors.location}
-            icon={<FaMapMarkerAlt className="text-gray-400" />}
-            required
-          />
+            <FormInput
+              label="Location"
+              type="text"
+              name="location"
+              placeholder="Hyderabad"
+              value={formData.location}
+              onChange={handleChange}
+              error={errors.location}
+              icon={<FaMapMarkerAlt className="text-gray-400" />}
+              required
+            />
 
-          <FormInput
-            label="Floor Number"
-            type="text"
-            name="floorNumber"
-            placeholder="1"
-            value={formData.floorNumber}
-            onChange={handleChange}
-            error={errors.floorNumber}
-            required
-          />
+            <FormInput
+              label="Floor Number"
+              type="text"
+              name="floorNumber"
+              placeholder="1"
+              value={formData.floorNumber}
+              onChange={handleChange}
+              error={errors.floorNumber}
+              required
+            />
+          </div>
         </div>
 
         {/* Shop Address */}
-        <div className="mt-6">
+        <div className="mt-6 mb-6">
           <label className="block text-gray-700 text-sm font-semibold mb-2">
             Shop Address <span className="text-red-500">*</span>
           </label>
@@ -283,97 +356,114 @@ const StallOwnerRegister = () => {
           )}
         </div>
 
-        {/* Profile Picture */}
-        <div className="mt-6">
-          <label className="block text-gray-700 text-sm font-semibold mb-2">
-            Profile Picture <span className="text-red-500">*</span>
-          </label>
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              {profilePreview ? (
-                <img
-                  src={profilePreview}
-                  alt="Profile preview"
-                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-300"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
-                  <FaImage className="text-gray-400" />
+        {/* Owner Information Section */}
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <FaUser className="text-purple-600" />
+            Owner Information
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <FormInput
+              label="Full Name"
+              type="text"
+              name="name"
+              placeholder="John Doe"
+              value={formData.name}
+              onChange={handleChange}
+              error={errors.name}
+              icon={<FaUser className="text-gray-400" />}
+              required
+            />
+
+            <FormInput
+              label="Email Address"
+              type="email"
+              name="email"
+              placeholder="owner@example.com"
+              value={formData.email}
+              onChange={handleChange}
+              error={errors.email}
+              icon={<FaEnvelope className="text-gray-400" />}
+              required
+            />
+          </div>
+        </div>
+
+        {/* Password Section */}
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <FaLock className="text-purple-600" />
+            Security
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Password Field */}
+            <div className="relative">
+              <label className="block text-gray-700 text-sm font-semibold mb-2">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaLock className="text-gray-400" />
                 </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-10 py-3 border-2 rounded-lg focus:outline-none focus:border-purple-500 ${
+                    errors.password ? 'border-red-400' : 'border-gray-300'
+                  }`}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={togglePasswordVisibility}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-red-500 text-xs mt-1">{errors.password}</p>
               )}
             </div>
-            <div className="flex-1">
-              <input
-                type="file"
-                name="profilePicture"
-                accept="image/*"
-                onChange={handleProfilePicture}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-              />
-              <p className="text-xs text-gray-500 mt-1">Recommended: Square image, 400x400px</p>
+
+            {/* Confirm Password Field */}
+            <div className="relative">
+              <label className="block text-gray-700 text-sm font-semibold mb-2">
+                Confirm Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <FaCheck className="text-gray-400" />
+                </div>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirmPassword"
+                  placeholder="••••••••"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-10 py-3 border-2 rounded-lg focus:outline-none focus:border-purple-500 ${
+                    errors.confirmPassword ? 'border-red-400' : 'border-gray-300'
+                  }`}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={toggleConfirmPasswordVisibility}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
+              )}
             </div>
           </div>
-          {errors.profilePicture && (
-            <p className="text-red-500 text-xs mt-1">{errors.profilePicture}</p>
-          )}
-        </div>
-
-        {/* Shop Images (1–5) */}
-        <div className="mt-6">
-          <label className="block text-gray-700 text-sm font-semibold mb-2">
-            Shop Images <span className="text-red-500">*</span>{' '}
-            <span className="text-gray-400 font-normal">(1–5 images)</span>
-          </label>
-          <input
-            type="file"
-            name="sellerShopImage"
-            accept="image/*"
-            multiple
-            onChange={handleShopImages}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-          />
-          {shopImagePreviews.length > 0 && (
-            <div className="flex gap-2 mt-3 flex-wrap">
-              {shopImagePreviews.map((src, i) => (
-                <img
-                  key={i}
-                  src={src}
-                  alt={`Shop ${i + 1}`}
-                  className="w-16 h-16 rounded-lg object-cover border-2 border-gray-300"
-                />
-              ))}
-            </div>
-          )}
-          {errors.sellerShopImages && (
-            <p className="text-red-500 text-xs mt-1">{errors.sellerShopImages}</p>
-          )}
-        </div>
-
-        {/* Passwords */}
-        <div className="grid md:grid-cols-2 gap-6 mt-6">
-          <FormInput
-            label="Password"
-            type="password"
-            name="password"
-            placeholder="••••••••"
-            value={formData.password}
-            onChange={handleChange}
-            error={errors.password}
-            icon={<FaLock className="text-gray-400" />}
-            required
-          />
-
-          <FormInput
-            label="Confirm Password"
-            type="password"
-            name="confirmPassword"
-            placeholder="••••••••"
-            value={formData.confirmPassword}
-            onChange={handleChange}
-            error={errors.confirmPassword}
-            icon={<FaCheck className="text-gray-400" />}
-            required
-          />
         </div>
 
         {/* Agreement */}
